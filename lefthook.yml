@@ -7,6 +7,9 @@ pre-commit:
     - name: lint
       glob: "*.{ts,tsx,js}"
       run: npx eslint {staged_files}
+    - name: typecheck
+      glob: "*.{ts,tsx}"
+      run: npm run typecheck
 
 pre-push:
   jobs:
