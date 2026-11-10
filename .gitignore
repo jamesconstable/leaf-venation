@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.swp
+.DS_Store
+
+# ACM-copyrighted; keep locally, cite by DOI
+venation.sig2005.pdf

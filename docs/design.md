@@ -1,0 +1,91 @@
+# Design
+
+Decisions agreed during the initial design session (2026-11-10/11). Vocabulary is defined in [GLOSSARY.md](../GLOSSARY.md); decisions that are surprising or hard to reverse are in [adr/](adr/). The original brief is [brief.md](brief.md); milestones are in [roadmap.md](roadmap.md).
+
+## Technology
+
+- **TypeScript** in strict mode, written in a functional style (ADR 0001).
+- **Vite** (build and dev server), **Vitest** (tests), **fast-check** (property tests), **typescript-eslint** (strict, type-checked) and **Prettier**, with **npm**.
+- **SolidJS** for the options column only; the canvas is managed outside it.
+- **lefthook** git hooks run type checking, linting and tests locally. No GitHub Actions or Pages while the repo is private; going public is decided between milestones 3 and 4.
+- Desktop first in evergreen browsers (Chrome, Firefox, Safari), with **WebGL2 required**. Narrow screens get a drawer layout.
+
+## Architecture
+
+```
+ui/          SolidJS components                 → render, share, catalogue
+render/      renderer interface, styles, WebGL background → simulation, outline
+share/       URL codec, SVG/PNG export          → simulation, outline
+worker/      thin Web Worker wrapper            → simulation
+catalogue/   leaf outlines, specimens, styles as data → outline
+outline/     outlines, teeth, fenestrations, star-shapedness
+simulation/  geometry, spatial index, growth, venation, vein width (pure; no DOM)
+```
+
+Dependencies only point downward; a lint rule enforces it. `simulation/` exposes a narrow, pure `step(state) → state` interface.
+
+- The simulation runs in a **Web Worker** and sends snapshots (transferable typed arrays) to the main thread. Draw speed means simulation steps per frame.
+- **Rendering**: a WebGL2 background layer (bokeh, paper grain) with a separate vein layer behind a single renderer interface (Canvas2D or WebGL, chosen per style). **SVG export** is a pure function of the simulation model, never a capture of the screen.
+- **Spatial indexing**: an incrementally updated uniform grid hash for nearest-node and birth-distance queries; `delaunator` triangulation rebuilt every step for closed venation. Both sit behind one interface and are tested against brute-force versions.
+
+## Simulation
+
+- Faithful to Runions et al. (2005). Auxin sources have **no influence radius**: every source influences its nearest vein node (open) or its relative neighbourhood (closed).
+- Closed venation uses the **Urquhart neighbourhood** first; the exact relative neighbourhood comes later as an advanced toggle. A brute-force exact version exists from the start as a test oracle.
+- **Deterministic** from (simulation parameters, random seed, model version) (ADR 0002).
+- **Scale**: specimen parameters are stored relative to the final leaf length. **Detail** sets the length in vein segment lengths. A **node budget** (~100k vein nodes) ends a runaway simulation gracefully. Table 1 of the paper is a starting point for tuning, not gospel.
+- **Termination**: a growth phase until the final outline is reached, then a settling phase with no growth, until no auxin sources remain and no darts are accepted for several steps, or no vein node has been added for several steps, or the node budget is hit. A new vein node within a tiny distance of an existing one is rejected and counts as no progress, which stops vein nodes stuttering.
+- **Vein width**: Murray's law with the vein width exponent as a render setting. In closed venation, all child veins entering a node contribute equally.
+- **Vein order**: the widest child continues its parent's order; the others take the next order. For closed venation it is computed on the growth tree.
+
+## Leaf outlines and growth
+
+- A leaf outline is a closed cubic Bézier margin path in normalised coordinates (base at the origin, tip along +y, length 1), plus zero or more **fenestration** paths, its initial vein nodes and a *symmetric* flag.
+- **Margin teeth** are procedural (summed triangular waveforms), applied to the final outline.
+- The leaf outline is the **final** shape; the starting outline is derived by inverting the growth (ADR 0003). A faint ghost of the final outline is shown during growth.
+- **Marginal growth** is only offered for outlines that are star-shaped from the base, checked automatically. Lobed and fenestrated outlines can still use isogonic or anisotropic growth.
+- **Fenestrations** use line of sight: a source only influences vein nodes it can see without crossing a fenestration, and new vein segments may not cross one. Fenestrations are present from the start and scale with the blade.
+- Anisotropic growth types start with a few presets (e.g. elongating, widening, Arabidopsis developmental after Fig. 5 of the paper).
+
+## Settings
+
+- **Simulation parameters** restart the simulation, debounced to the end of a slider drag.
+- **Render settings** (style, overlays, vein width exponent) re-render without restarting.
+- **Playback** (speed, pause, scrub) never restarts.
+- A **specimen** holds only leaf-defining simulation parameters. Random seed, detail and style sit outside it. A specimen may *suggest* a style, applied only when it is picked fresh. Changing any specimen parameter deselects the specimen and the leaf becomes **custom**.
+- The UI explains the random seed with a line of help text, since "seed" is otherwise ambiguous in a plant app.
+- **First visit**: a random pick from a curated list of specimen and style pairings, already growing.
+
+## Sharing
+
+- Settings live in the URL fragment as readable short keys, updated live.
+- An unmodified specimen link is a living reference (`#v=1&sp=ginkgo&rs=8f3a&detail=…&style=…`); a custom link lists every simulation parameter explicitly (ADR 0004). Render settings are always explicit.
+- Links from an older model version open with the current model and a gentle notice.
+- Exports: SVG and high-resolution PNG. A herbarium sheet and time-lapse video come later.
+
+## Catalogues
+
+- **Leaf outlines (16)**: linear, lanceolate, elliptic, ovate, obovate, oblong, spatulate, cordate, deltoid, orbicular, reniform, flabellate, palmately lobed, pinnately lobed, hastate, sagittate. Each gets a thumbnail generated in the current style.
+- **Specimens**: the paper's ginkgo, lady's mantle, sweetgum, Nankin cherry, poplar, orchid, grass and Arabidopsis (developmental); then Monstera with the fenestration work; tuned-by-eye specimens later.
+- **Styles (8)**: spring green, deep summer green, autumn, cyanotype, botanical ink, graphite study, technical study, skeleton leaf.
+- **Overlays**: auxin sources with kill-distance circles; influence lines; growth direction arrows; Delaunay/Voronoi; relative-neighbourhood lune under the cursor; rejected darts; vein nodes; tagged vein nodes (closed venation). Each toggles independently; technical study enables several by default.
+
+## Look and feel
+
+- Coloured styles: rich colours, with a bokeh background of similarly shaped leaves (animated where performance allows, with parallax and wind as polish).
+- Drawing styles: papery texture, with pencil or ink strokes (wobble, pressure variation).
+- Veins are smooth curves through the vein nodes, tapering continuously, with clean joins where they branch.
+- **Glass panel**: CSS `backdrop-filter` on a fairly opaque tint, with no refraction. The selected option glows from behind in the style's accent colour, spilling softly onto its neighbours, all driven by per-style CSS variables.
+- **Typography**: EB Garamond (names and headings; botanical names in italics) and Inter (controls), self-hosted. Technical study uses a drafting-style font for annotations.
+- Delights in the core plan: trace to base, timeline scrubber, PNG export, keyboard shortcuts with a `?` cheat sheet.
+
+## Accessibility
+
+Keyboard operable throughout with screen-reader labels; WCAG AA contrast on glass; `prefers-reduced-motion` stops the bokeh animation and makes growth jump in larger steps; overlays use shape and dash as well as colour.
+
+## Testing
+
+1. Unit tests for geometry and growth maths.
+2. fast-check property tests for invariants: vein nodes stay inside the blade; no auxin source is closer than the birth distance; no vein crosses a fenestration; growth then reverse growth returns the starting outline; open venation forms a tree.
+3. **Golden tests**: fixed settings and random seed must produce an output identical to a stored hash. A failure means the model version must be bumped, or the change undone.
+4. Playwright screenshot tests for styles, once they settle.
