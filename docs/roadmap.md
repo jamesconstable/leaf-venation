@@ -21,4 +21,5 @@ Each milestone is developed on its own branch with small, logical commits; tests
 - Fenestrations that open partway through growth.
 - Compound leaves as arrangements of leaflets.
 - Parallax and wind on the bokeh background.
+- Slower playback than one step per frame (e.g. one step every few frames): isogonic growth is most satisfying to watch at the slowest speed, and performance leaves plenty of headroom.
 - Playwright screenshot tests for styles.
