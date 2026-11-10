@@ -1,8 +1,9 @@
-import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
 import { leafOutlines } from "../catalogue/leafOutlines";
 import { outlineRegion } from "../outline/outline";
+import { isStarShapedFrom } from "../outline/starShaped";
 import type { Overlays } from "../render/plainRenderer";
-import { simulationConfig, type Venation } from "../simulation/simulation";
+import { simulationConfig, type Growth, type Venation } from "../simulation/simulation";
 import type { VenationSnapshot } from "../simulation/snapshot";
 import { SimulationClient } from "../worker/simulationClient";
 import { Choice, Section, Slider, Toggle } from "./controls";
@@ -23,6 +24,9 @@ export const App = () => {
   const [killDistance, setKillDistance] = createSignal(0.04);
   const [birthDistance, setBirthDistance] = createSignal(0.05);
   const [dartDensity, setDartDensity] = createSignal(300);
+  const [growthType, setGrowthType] = createSignal<Growth["type"]>("marginal");
+  const [initialSize, setInitialSize] = createSignal(0.2);
+  const [growthPerStep, setGrowthPerStep] = createSignal(0.005);
   const [detail, setDetail] = createSignal(200);
   const [randomSeed, setRandomSeed] = createSignal(newRandomSeed());
 
@@ -43,18 +47,38 @@ export const App = () => {
   const outline = createMemo(
     () => (leafOutlines.find(({ id }) => id === outlineId()) ?? leafOutlines[0])?.outline,
   );
+  const blade = createMemo(() => {
+    const leafOutline = outline();
+    return leafOutline === undefined ? undefined : outlineRegion(leafOutline);
+  });
+  // Marginal growth only works if the whole blade can be seen from its base.
+  const marginalAllowed = createMemo(() => {
+    const region = blade();
+    return region !== undefined && isStarShapedFrom(region);
+  });
+  createEffect(() => {
+    if (growthType() === "marginal" && !marginalAllowed()) setGrowthType("isogonic");
+  });
+  const growth = createMemo<Growth>(() => {
+    const type = growthType();
+    return type === "none"
+      ? { type }
+      : { type, initialSize: initialSize(), growthPerStep: growthPerStep() };
+  });
+
   const config = createMemo(() => {
     const leafOutline = outline();
-    if (leafOutline === undefined) return undefined;
+    const region = blade();
+    if (leafOutline === undefined || region === undefined) return undefined;
     return simulationConfig({
-      blade: outlineRegion(leafOutline),
+      blade: region,
       initialVeinNodes: leafOutline.initialVeinNodes,
       parameters: {
         venation: venation(),
         killDistance: killDistance(),
         birthDistance: birthDistance(),
         dartDensity: dartDensity(),
-        growth: { type: "none" },
+        growth: growth(),
       },
       detail: detail(),
       randomSeed: randomSeed(),
@@ -108,6 +132,50 @@ export const App = () => {
               setKillDistance(value === "closed" ? 0 : 0.04);
             }}
           />
+        </Section>
+
+        <Section title="Growth">
+          <Choice
+            label="Growth type"
+            value={growthType()}
+            options={[
+              { value: "none", label: "No growth", title: "The leaf keeps its full size" },
+              {
+                value: "marginal",
+                label: "Marginal",
+                title: marginalAllowed()
+                  ? "The leaf expands only at its margin; veins stay where they formed"
+                  : "Unavailable: parts of this outline can't be seen from its base, so a growing margin would leave veins outside the leaf",
+                disabled: !marginalAllowed(),
+              },
+              {
+                value: "isogonic",
+                label: "Isogonic",
+                title: "The whole leaf, veins included, expands equally in every direction",
+              },
+            ]}
+            onChange={setGrowthType}
+          />
+          <Show when={growthType() !== "none"}>
+            <Slider
+              label="Initial size"
+              value={initialSize()}
+              min={0.05}
+              max={0.9}
+              step={0.05}
+              format={(value) => `${Math.round(value * 100)}%`}
+              onCommit={setInitialSize}
+            />
+            <Slider
+              label="Growth per step"
+              value={growthPerStep()}
+              min={0.001}
+              max={0.02}
+              step={0.001}
+              format={percent}
+              onCommit={setGrowthPerStep}
+            />
+          </Show>
         </Section>
 
         <Section title="Simulation">
