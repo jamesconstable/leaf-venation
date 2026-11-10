@@ -13,6 +13,13 @@ import {
   type VeinNodes,
 } from "./veinNodes";
 
+/**
+ * Identifies the simulation's behaviour. Bump it whenever a change alters the
+ * result for the same settings and random seed, once the current version has
+ * been released (ADR 0002). The golden test flags such changes.
+ */
+export const MODEL_VERSION = 1;
+
 export type Venation = "open" | "closed";
 
 /**
@@ -160,10 +167,13 @@ export const step = (state: SimulationState): SimulationState => {
 
   const { veinNodes, children } = grow(state.veinNodes, surviving, config);
   const added = veinNodes.count - state.veinNodes.count;
+  // Tags pass to the new vein nodes. A tagged node that could not grow (blocked
+  // by a node that already reached the source) is released, as if it had left
+  // the source's zone of influence; otherwise the source would wait forever.
   const auxinSources = surviving.map(({ source }) =>
     source.tagged === undefined
       ? source
-      : { ...source, tagged: source.tagged.flatMap((v) => children.get(v) ?? [v]) },
+      : { ...source, tagged: source.tagged.flatMap((v) => children.get(v) ?? []) },
   );
 
   const stepsWithoutGrowth = added > 0 ? 0 : state.stepsWithoutGrowth + 1;
@@ -225,38 +235,51 @@ const closedInfluence = (state: SimulationState, sources: readonly AuxinSource[]
  * Grows one new vein node from each influenced node, one vein segment length
  * along the average direction to its sources (Runions et al. 2005, Equation 1).
  * Nodes are processed in index order so results are deterministic.
+ *
+ * Deviation from the paper: when sources on opposite sides of a node nearly
+ * cancel, the average points sideways, usually onto a node grown earlier, and
+ * the paper's rule makes no progress, forever. Only in that case, the node
+ * instead grows one vein toward each of its sources separately.
  */
 const grow = (
   nodes: VeinNodes,
   surviving: readonly { source: AuxinSource; influences: readonly number[] }[],
   config: SimulationConfig,
 ) => {
-  const directions = new Map<number, { x: number; y: number }>();
+  const pulls = new Map<number, { x: number; y: number }[]>();
   for (const { source, influences } of surviving) {
     for (const v of influences) {
       const dx = source.x - veinNodeX(nodes, v);
       const dy = source.y - veinNodeY(nodes, v);
       const length = Math.sqrt(dx * dx + dy * dy);
       if (length === 0) continue;
-      const sum = directions.get(v) ?? { x: 0, y: 0 };
-      directions.set(v, { x: sum.x + dx / length, y: sum.y + dy / length });
+      pulls.set(v, [...(pulls.get(v) ?? []), { x: dx / length, y: dy / length }]);
     }
   }
 
   const appender = appendVeinNodes(nodes);
   const children = new Map<number, number[]>();
-  for (const v of [...directions.keys()].sort((a, b) => a - b)) {
-    if (appender.current().count >= config.nodeBudget) break;
-    const { x: dx, y: dy } = directions.get(v) ?? { x: 0, y: 0 };
+  const tryGrow = (v: number, dx: number, dy: number): boolean => {
     const length = Math.sqrt(dx * dx + dy * dy);
-    // Sources pulling in opposite directions cancel out; there is nowhere to grow.
-    if (length < 1e-9) continue;
+    if (length < 1e-9 || appender.current().count >= config.nodeBudget) return false;
     const x = veinNodeX(nodes, v) + dx / length;
     const y = veinNodeY(nodes, v) + dy / length;
-    if (!regionContains(config.blade, x, y)) continue;
-    if (anyVeinNodeWithin(appender.current(), x, y, MINIMUM_SEPARATION)) continue;
+    if (!regionContains(config.blade, x, y)) return false;
+    if (anyVeinNodeWithin(appender.current(), x, y, MINIMUM_SEPARATION)) return false;
     const child = appender.append(x, y, v);
     children.set(v, [...(children.get(v) ?? []), child]);
+    return true;
+  };
+
+  for (const v of [...pulls.keys()].sort((a, b) => a - b)) {
+    const directions = pulls.get(v) ?? [];
+    const sum = directions.reduce((total, d) => ({ x: total.x + d.x, y: total.y + d.y }), {
+      x: 0,
+      y: 0,
+    });
+    if (!tryGrow(v, sum.x, sum.y) && directions.length > 1) {
+      for (const d of directions) tryGrow(v, d.x, d.y);
+    }
   }
   return { veinNodes: appender.finish(), children };
 };

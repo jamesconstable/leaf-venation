@@ -128,6 +128,17 @@ describe.each(venations)("%s venation", (venation) => {
     );
   });
 
+  it("settles with every auxin source reached (no deadlocked sources)", () => {
+    fc.assert(
+      fc.property(randomSeed, (seed) => {
+        const state = simulate(venation, seed, 60);
+        expect(state.status).toBe("settled");
+        expect(state.auxinSources).toEqual([]);
+      }),
+      propertyOptions,
+    );
+  });
+
   it("stops at the node budget", () => {
     const config = { ...simulate(venation, "budget", 60, 0).config, nodeBudget: 200 };
     let state = initialState(config);
@@ -148,14 +159,15 @@ describe("simulation", () => {
 
   it("reproduces a known result exactly (golden test; see ADR 0002)", () => {
     // If this fails, the change altered simulation results. Either undo it, or
-    // accept it deliberately: update these fingerprints and bump the model version.
+    // accept it deliberately: update these fingerprints and bump MODEL_VERSION
+    // (unless that version has never been released).
     expect({
       open: fingerprint(simulate("open", "golden")),
       closed: fingerprint(simulate("closed", "golden")),
     }).toMatchInlineSnapshot(`
       {
-        "closed": "7cfbf965",
-        "open": "6788bc4a",
+        "closed": "9e61636c",
+        "open": "f57d16d3",
       }
     `);
   });
