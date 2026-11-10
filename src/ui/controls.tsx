@@ -54,7 +54,7 @@ export const Slider = (props: {
 export const Choice = <T extends string>(props: {
   label: string;
   value: T;
-  options: readonly { value: T; label: string; title?: string }[];
+  options: readonly { value: T; label: string; title?: string; disabled?: boolean }[];
   onChange: (value: T) => void;
 }) => {
   // A shared name groups the radios, so arrow keys move between options.
@@ -69,6 +69,7 @@ export const Choice = <T extends string>(props: {
               <input
                 type="radio"
                 name={name}
+                disabled={option.disabled ?? false}
                 checked={props.value === option.value}
                 onChange={() => {
                   props.onChange(option.value);

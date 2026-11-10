@@ -37,6 +37,7 @@ Dependencies only point downward; a lint rule enforces it. `simulation/` exposes
 - Closed venation uses the **Urquhart neighbourhood** first; the exact relative neighbourhood comes later as an advanced toggle. A brute-force exact version exists from the start as a test oracle.
 - **Deterministic** from (simulation parameters, random seed, model version) (ADR 0002).
 - **Scale**: specimen parameters are stored relative to the final leaf length. **Detail** sets the length in vein segment lengths. A **node budget** (~100k vein nodes) ends a runaway simulation gracefully. Table 1 of the paper is a starting point for tuning, not gospel.
+- **Growth**: the leaf length grows linearly from the initial size by the growth per step (both fractions of the final length). Simulation coordinates are those of the final leaf. Under marginal growth the blade is the final blade scaled about its base, and vein nodes and auxin sources never move. Under isogonic growth nothing moves either: the unit of distance shrinks instead (a vein segment length is 1 / size), as the paper does. Darts keep the same density per unit of leaf area at every size. Snapshots carry the blade and vein scales so the renderer can draw the current leaf.
 - **Termination**: a growth phase until the final outline is reached, then a settling phase with no growth, until no auxin sources remain and no darts are accepted for several steps, or no vein node has been added for several steps, or the node budget is hit. A new vein node within a tiny distance of an existing one is rejected and counts as no progress, which stops vein nodes stuttering.
 - **Deviations from the paper**. The first two apply only where the paper's rules make no progress; the third fills a gap in the paper:
   - When a node's sources nearly cancel (on opposite sides of it), the averaged step points sideways onto an earlier node. In that case only, the node grows one vein toward each source separately.
@@ -50,8 +51,8 @@ Dependencies only point downward; a lint rule enforces it. `simulation/` exposes
 
 - A leaf outline is a closed cubic Bézier margin path in normalised coordinates (base at the origin, tip along +y, length 1), plus zero or more **fenestration** paths, its initial vein nodes and a _symmetric_ flag.
 - **Margin teeth** are procedural (summed triangular waveforms), applied to the final outline.
-- The leaf outline is the **final** shape; the starting outline is derived by inverting the growth (ADR 0003). A faint ghost of the final outline is shown during growth.
-- **Marginal growth** is only offered for outlines that are star-shaped from the base, checked automatically. Lobed and fenestrated outlines can still use isogonic or anisotropic growth.
+- The leaf outline is the **final** shape; the starting outline is derived by inverting the growth (ADR 0003). For marginal and isogonic growth that is just the outline scaled down about the base. A ghost outline of the final leaf is shown during growth, and the view always frames the final leaf.
+- **Marginal growth** is only offered for outlines that are star-shaped from the base, checked automatically; the option is disabled with an explanation otherwise, and a selection falls back to isogonic growth. Lobed and fenestrated outlines can still use isogonic or anisotropic growth.
 - **Fenestrations** use line of sight: a source only influences vein nodes it can see without crossing a fenestration, and new vein segments may not cross one. Fenestrations are present from the start and scale with the blade.
 - Anisotropic growth types start with a few presets (e.g. elongating, widening, Arabidopsis developmental after Fig. 5 of the paper).
 

@@ -6,6 +6,8 @@ import {
   initialState,
   simulationConfig,
   step,
+  veinScale,
+  type Growth,
   type SimulationState,
   type Venation,
   type VenationParameters,
@@ -20,23 +22,40 @@ const blade = region(
   }),
 );
 
-const parameters = (venation: Venation): VenationParameters => ({
+const noGrowth: Growth = { type: "none" };
+
+const parameters = (venation: Venation, growth: Growth): VenationParameters => ({
   venation,
   killDistance: venation === "open" ? 0.04 : 0.01,
   birthDistance: 0.05,
   dartDensity: 300,
+  growth,
 });
 
-const simulate = (venation: Venation, randomSeed: string, detail = 60, maxSteps = 2000) => {
-  let state = initialState(
+const startState = (
+  venation: Venation,
+  randomSeed: string,
+  detail = 60,
+  growth: Growth = noGrowth,
+) =>
+  initialState(
     simulationConfig({
       blade,
       initialVeinNodes: [vec2(0, 0.01)],
-      parameters: parameters(venation),
+      parameters: parameters(venation, growth),
       detail,
       randomSeed,
     }),
   );
+
+const simulate = (
+  venation: Venation,
+  randomSeed: string,
+  detail = 60,
+  maxSteps = 2000,
+  growth: Growth = noGrowth,
+) => {
+  let state = startState(venation, randomSeed, detail, growth);
   while (state.status === "growing" && state.stepCount < maxSteps) state = step(state);
   return state;
 };
@@ -149,6 +168,63 @@ describe.each(venations)("%s venation", (venation) => {
   });
 });
 
+const marginal: Growth = { type: "marginal", initialSize: 0.3, growthPerStep: 0.01 };
+const isogonic: Growth = { type: "isogonic", initialSize: 0.3, growthPerStep: 0.01 };
+const growths = [marginal, isogonic];
+
+describe.each(growths.flatMap((growth) => venations.map((venation) => ({ growth, venation }))))(
+  "$growth.type growth, $venation venation",
+  ({ growth, venation }) => {
+    it("grows the leaf linearly to full size, and only then settles", () => {
+      let state = startState(venation, "grow", 60, growth);
+      expect(state.size).toBe(0.3);
+      while (state.status === "growing") {
+        const before = state.size;
+        state = step(state);
+        expect(state.size).toBeCloseTo(Math.min(1, before + 0.01), 12);
+        if (state.status === "settled") expect(before).toBe(1);
+      }
+      expect(state.status).toBe("settled");
+      expect(state.veinNodes.count).toBeGreaterThan(50);
+    });
+
+    it("keeps every vein node inside the blade as it grows", () => {
+      fc.assert(
+        fc.property(randomSeed, (seed) => {
+          let state = startState(venation, seed, 40, growth);
+          while (state.status === "growing") {
+            state = step(state);
+            if (state.stepCount % 10 !== 0 && state.status === "growing") continue;
+            const { xs, ys } = veinNodeArrays(state.veinNodes);
+            const inward = growth.type === "marginal" ? state.size : 1;
+            xs.forEach((x, i) => {
+              expect(regionContains(state.config.blade, x / inward, (ys[i] ?? NaN) / inward)).toBe(
+                true,
+              );
+            });
+          }
+        }),
+        propertyOptions,
+      );
+    });
+
+    it("grows each new vein node one vein segment length (at the current size) from its parent", () => {
+      let state = startState(venation, "segments", 40, growth);
+      const createdAtScale: number[] = [];
+      while (state.status === "growing") {
+        state = step(state);
+        while (createdAtScale.length < state.veinNodes.count) createdAtScale.push(veinScale(state));
+      }
+      const { xs, ys, parents } = veinNodeArrays(state.veinNodes);
+      parents.forEach((parent, i) => {
+        if (parent === -1) return;
+        const length = distance(xs[i] ?? NaN, ys[i] ?? NaN, xs[parent] ?? NaN, ys[parent] ?? NaN);
+        expect(length * (createdAtScale[i] ?? NaN)).toBeCloseTo(1, 9);
+      });
+    });
+  },
+);
+
 describe("anastomoses", () => {
   it("never occur in open venation", () => {
     fc.assert(
@@ -196,13 +272,19 @@ describe("simulation", () => {
     // If this fails, the change altered simulation results. Either undo it, or
     // accept it deliberately: update these fingerprints and bump MODEL_VERSION
     // (unless that version has never been released).
+    const golden = (venation: Venation, growth: Growth = noGrowth) =>
+      fingerprint(simulate(venation, "golden", 60, 2000, growth));
     expect({
-      open: fingerprint(simulate("open", "golden")),
-      closed: fingerprint(simulate("closed", "golden")),
+      open: golden("open"),
+      closed: golden("closed"),
+      openMarginal: golden("open", marginal),
+      closedIsogonic: golden("closed", isogonic),
     }).toMatchInlineSnapshot(`
       {
         "closed": "70590241",
+        "closedIsogonic": "004e6351",
         "open": "f57d16d3",
+        "openMarginal": "000a3763",
       }
     `);
   });

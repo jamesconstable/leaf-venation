@@ -6,7 +6,7 @@ Each milestone is developed on its own branch with small, logical commits; tests
 2. **Growth**: marginal and isogonic growth; detail; node budget; starting outline and ghost; playback.
 3. **Beauty**: glass panel; bokeh; paper textures; all eight styles; vein smoothing and widths.
    - **Decision point**: make the repo public and set up GitHub Actions CI and the Pages deploy?
-4. **Catalogue**: all 16 leaf outlines; margin teeth; the eight paper specimens; thumbnails.
+4. **Catalogue**: all 16 leaf outlines; margin teeth; the eight paper specimens; thumbnails. Retune slider ranges and defaults: dense closed venation wants very high dart densities and very low birth distances, beyond the current ranges.
 5. **Sharing**: URL codec; SVG and PNG export; keyboard shortcuts; timeline scrubber; trace to base.
 6. **Anisotropy and fenestrations**: uniform and non-uniform anisotropic growth with presets; line-of-sight fenestrations; Monstera specimen.
 7. **Extras**: herbarium sheet with fantasy botanical names; time-lapse export; gallery; placing auxin sources by hand; explain mode; custom outline editor.
@@ -21,4 +21,5 @@ Each milestone is developed on its own branch with small, logical commits; tests
 - Fenestrations that open partway through growth.
 - Compound leaves as arrangements of leaflets.
 - Parallax and wind on the bokeh background.
+- Slower playback than one step per frame (e.g. one step every few frames): isogonic growth is most satisfying to watch at the slowest speed, and performance leaves plenty of headroom.
 - Playwright screenshot tests for styles.

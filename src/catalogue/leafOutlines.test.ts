@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { regionContains } from "../geometry/region";
 import { outlineRegion } from "../outline/outline";
+import { isStarShapedFrom } from "../outline/starShaped";
 import { leafOutlines } from "./leafOutlines";
 
 describe.each(leafOutlines)("leaf outline $id", ({ outline }) => {
@@ -25,4 +26,17 @@ describe.each(leafOutlines)("leaf outline $id", ({ outline }) => {
 it("gives every leaf outline a unique id", () => {
   const ids = leafOutlines.map(({ id }) => id);
   expect(new Set(ids).size).toBe(ids.length);
+});
+
+it("lists which leaf outlines allow marginal growth", () => {
+  const starShaped = Object.fromEntries(
+    leafOutlines.map(({ id, outline }) => [id, isStarShapedFrom(outlineRegion(outline))]),
+  );
+  expect(starShaped).toMatchInlineSnapshot(`
+    {
+      "cordate": true,
+      "elliptic": true,
+      "ovate": true,
+    }
+  `);
 });

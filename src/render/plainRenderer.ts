@@ -1,4 +1,4 @@
-import type { Polygon, Region } from "../geometry/region";
+import { scaleRegion, type Polygon, type Region } from "../geometry/region";
 import type { VenationSnapshot } from "../simulation/snapshot";
 import { veinWidths } from "../simulation/veinWidth";
 import { fitView, toScreenX, toScreenY, type View } from "./view";
@@ -14,7 +14,7 @@ export interface RenderSettings {
 }
 
 export interface Scene {
-  /** The blade in simulation units. */
+  /** The blade at its final size, in simulation units. */
   readonly blade: Region;
   readonly killDistance: number;
   readonly snapshot: VenationSnapshot | undefined;
@@ -25,6 +25,7 @@ const palette = {
   background: "#f3efe6",
   blade: "#e3ead3",
   margin: "#93a877",
+  ghost: "rgba(147, 168, 119, 0.55)",
   vein: "#36502a",
   auxinSource: "#c2452d",
   killDistance: "rgba(194, 69, 45, 0.25)",
@@ -43,14 +44,38 @@ export const renderPlain = (
 ): void => {
   context.fillStyle = palette.background;
   context.fillRect(0, 0, width, height);
+  // The view always frames the final leaf, so a growing leaf fills it as it grows.
   const view = fitView(scene.blade.bounds, width, height);
-
-  drawBlade(context, scene.blade, view);
   const { snapshot } = scene;
+  const bladeScale = snapshot?.bladeScale ?? 1;
+  if (bladeScale < 1) drawGhost(context, scene.blade, view);
+  drawBlade(context, bladeScale === 1 ? scene.blade : scaleRegion(scene.blade, bladeScale), view);
   if (snapshot === undefined) return;
-  drawVeins(context, snapshot, view, settings.veinWidthExponent, scene.blade);
-  if (settings.overlays.auxinSources) drawAuxinSources(context, snapshot, view, scene.killDistance);
-  if (settings.overlays.veinNodes) drawVeinNodes(context, snapshot, view);
+  // Vein nodes and auxin sources are scaled from simulation coordinates to the current leaf.
+  const veinView = scaledView(view, snapshot.veinScale);
+  drawVeins(context, snapshot, veinView, settings.veinWidthExponent, scene.blade, view, bladeScale);
+  if (settings.overlays.auxinSources) {
+    // The kill distance is in vein segment lengths at the current size: 1 / veinScale in
+    // simulation coordinates.
+    drawAuxinSources(context, snapshot, veinView, scene.killDistance / snapshot.veinScale);
+  }
+  if (settings.overlays.veinNodes) drawVeinNodes(context, snapshot, veinView);
+};
+
+/** A view that first scales simulation coordinates by `factor` about the base (the origin). */
+const scaledView = (view: View, factor: number): View => ({ ...view, scale: view.scale * factor });
+
+/** A faint dashed outline of the final leaf, showing where a growing leaf is heading. */
+const drawGhost = (context: CanvasRenderingContext2D, blade: Region, view: View) => {
+  context.beginPath();
+  tracePolygon(context, blade.outer, view);
+  for (const hole of blade.holes) tracePolygon(context, hole, view);
+  context.save();
+  context.setLineDash([4, 5]);
+  context.strokeStyle = palette.ghost;
+  context.lineWidth = 1;
+  context.stroke();
+  context.restore();
 };
 
 const tracePolygon = (context: CanvasRenderingContext2D, polygon: Polygon, view: View) => {
@@ -78,12 +103,14 @@ const drawVeins = (
   view: View,
   exponent: number,
   blade: Region,
+  leafView: View,
+  bladeScale: number,
 ) => {
   const { xs, ys, parents } = snapshot;
   const widths = veinWidths(parents, exponent);
   const maxWidth = widths.reduce((max, w) => Math.max(max, w), 1);
-  // Finest veins are hairlines; the widest is a fixed fraction of the leaf's size on screen.
-  const leafSize = (blade.bounds.maxY - blade.bounds.minY) * view.scale;
+  // Finest veins are hairlines; the widest is a fixed fraction of the current leaf's size on screen.
+  const leafSize = (blade.bounds.maxY - blade.bounds.minY) * leafView.scale * bladeScale;
   const finest = 0.6;
   const widest = Math.max(finest, 0.016 * leafSize);
   const pixels = (w: number) =>

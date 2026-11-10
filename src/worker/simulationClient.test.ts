@@ -7,6 +7,8 @@ const progress = (from: number, xs: number[]): ProgressMessage => ({
   generation: 1,
   stepCount: 0,
   status: "growing",
+  bladeScale: 1,
+  veinScale: 1,
   from,
   xs: new Float64Array(xs),
   ys: new Float64Array(xs.map((x) => -x)),

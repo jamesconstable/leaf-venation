@@ -31,6 +31,8 @@ export class SnapshotAccumulator {
     return {
       stepCount: message.stepCount,
       status: message.status,
+      bladeScale: message.bladeScale,
+      veinScale: message.veinScale,
       xs: this.xs.subarray(0, this.count),
       ys: this.ys.subarray(0, this.count),
       parents: this.parents.subarray(0, this.count),
