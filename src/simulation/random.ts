@@ -36,14 +36,14 @@ export const randomStateFromSeed = (randomSeed: string): RandomState => {
  */
 export interface Random {
   /** A uniformly distributed number in [0, 1). */
-  next(): number;
-  state(): RandomState;
+  readonly next: () => number;
+  readonly state: () => RandomState;
 }
 
 export const random = (initial: RandomState): Random => {
   let [a, b, c, d] = initial;
   return {
-    next() {
+    next: () => {
       const t = (((a + b) | 0) + d) | 0;
       d = (d + 1) | 0;
       a = b ^ (b >>> 9);
