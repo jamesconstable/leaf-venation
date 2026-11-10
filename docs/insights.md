@@ -66,6 +66,14 @@ Shared links must reproduce a leaf exactly. IEEE 754 requires `+ - * /` and `Mat
 
 A test fingerprints the complete output of two fixed simulations. It caught the deadlock fix above, which was correct and intended but changed results. That is exactly the signal for deciding whether shared links need a new model version.
 
+### Bokeh without WebGL
+
+The plan assumed animated bokeh would need WebGL shaders. Instead, each layer of out-of-focus foliage is painted at a tenth to a third of screen resolution, blurred in a few milliseconds at that size, and scaled up by the browser, which softens it further for free. Drifting the layers with CSS transforms lets the GPU compositor animate them at no cost to the main thread, so the simulation keeps the whole frame budget. A plain bilinear upscale alone left blocky artefacts; the small blur first is what makes it look like a lens.
+
+### `isPointInPath` ignores the canvas transform
+
+The stippled shading in the botanical ink style tested each candidate dot with `context.isPointInPath(blade, x, y)` and drew nothing at all. The path is interpreted through the context's current transform (scaled by the device pixel ratio on a high-density display), but the point is not: it's in raw canvas pixels. On a 2× display every test missed. Testing against our own polygon in the same coordinates fixed it, and is independent of the display.
+
 ### A reactive framework can reset an input before you read it
 
 Our slider kept a "draft" value while dragging. On release, the handler cleared the draft and then read the input's value. But clearing the draft made SolidJS synchronously re-render the input with the old value, so every slider silently ignored the user. The unit tests didn't cover the UI; a browser check found it within minutes.

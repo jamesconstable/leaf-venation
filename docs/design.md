@@ -28,7 +28,7 @@ The exact rules are in `eslint.config.js`. ESLint also bans `Math.random`, `Math
 Dependencies only point downward; a lint rule enforces it. `simulation/` exposes a narrow, pure `step(state) → state` interface.
 
 - The simulation runs in a **Web Worker** and sends snapshots (transferable typed arrays) to the main thread. Draw speed means simulation steps per frame.
-- **Rendering**: a WebGL2 background layer (bokeh, paper grain) with a separate vein layer behind a single renderer interface (Canvas2D or WebGL, chosen per style). **SVG export** is a pure function of the simulation model, never a capture of the screen.
+- **Rendering**: each frame, `prepareLeaf` turns a snapshot into screen geometry (current blade, ghost outline, and each vein as a smoothed, tapering ribbon along its vein path), and the style paints it onto a transparent Canvas2D layer above a backdrop. Backdrops need no WebGL so far: bokeh layers are painted at low resolution, blurred, scaled up by the browser and drifted with CSS transforms; paper is a generated texture. WebGL remains an option behind the same interfaces if a style needs it. **SVG export** is a pure function of the simulation model, never a capture of the screen.
 - **Spatial indexing**: an incrementally updated uniform grid hash for nearest-node and birth-distance queries; `delaunator` triangulation rebuilt every step for closed venation. Both sit behind one interface and are tested against brute-force versions.
 
 ## Simulation
