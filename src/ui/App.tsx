@@ -100,7 +100,12 @@ export const App = () => {
               { value: "open", label: "Open", title: "Veins branch but never rejoin" },
               { value: "closed", label: "Closed", title: "Veins may rejoin, forming loops" },
             ]}
-            onChange={setVenation}
+            onChange={(value) => {
+              setVenation(value);
+              // Closed patterns need the smallest kill distance (the paper uses one vein
+              // segment length); with a large one they look just like open patterns.
+              setKillDistance(value === "closed" ? 0 : 0.04);
+            }}
           />
         </Section>
 
@@ -108,10 +113,10 @@ export const App = () => {
           <Slider
             label="Kill distance"
             value={killDistance()}
-            min={0.005}
+            min={0}
             max={0.15}
             step={0.005}
-            format={percent}
+            format={(value) => (value === 0 ? "Minimum" : percent(value))}
             onCommit={setKillDistance}
           />
           <Slider
