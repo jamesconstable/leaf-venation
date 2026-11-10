@@ -1,5 +1,11 @@
 /// <reference lib="webworker" />
-import { initialState, step, type SimulationState } from "../simulation/simulation";
+import {
+  bladeScale,
+  initialState,
+  step,
+  veinScale,
+  type SimulationState,
+} from "../simulation/simulation";
 import { veinNodeArrays } from "../simulation/veinNodes";
 import type { FromWorker, ToWorker } from "./protocol";
 
@@ -18,6 +24,8 @@ const reportProgress = (current: SimulationState) => {
     generation,
     stepCount: current.stepCount,
     status: current.status,
+    bladeScale: bladeScale(current),
+    veinScale: veinScale(current),
     from: sentCount,
     xs,
     ys,

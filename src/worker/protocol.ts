@@ -14,6 +14,8 @@ export interface ProgressMessage {
   readonly generation: number;
   readonly stepCount: number;
   readonly status: SimulationStatus;
+  readonly bladeScale: number;
+  readonly veinScale: number;
   /** The index of the first vein node in the arrays below; earlier nodes were sent before. */
   readonly from: number;
   readonly xs: Float64Array;

@@ -4,6 +4,10 @@ import type { SimulationStatus } from "./simulation";
 export interface VenationSnapshot {
   readonly stepCount: number;
   readonly status: SimulationStatus;
+  /** How much the blade is scaled, about its base, from its final size. */
+  readonly bladeScale: number;
+  /** How much vein node and auxin source positions are scaled to the current leaf. */
+  readonly veinScale: number;
   /** Vein node positions and parent indices (-1 for initial vein nodes). */
   readonly xs: Float64Array;
   readonly ys: Float64Array;
