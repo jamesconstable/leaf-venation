@@ -1,5 +1,14 @@
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
-import { renderPlain, type RenderSettings, type Scene } from "../render/plainRenderer";
+import { renderLeaf, type Frame, type RenderSettings, type Scene } from "../render/leafRenderer";
+
+/** On wide screens the options panel floats over the left of the stage; frame the leaf beside it. */
+const PANEL_CLEARANCE = 352;
+const WIDE = 900;
+
+const leafFrame = (width: number, height: number): Frame =>
+  width >= WIDE
+    ? { left: PANEL_CLEARANCE, top: 0, width: width - PANEL_CLEARANCE, height }
+    : { left: 0, top: 0, width, height };
 
 /** The drawing area. Redraws at most once per animation frame, whenever the scene or settings change. */
 export const LeafCanvas = (props: { scene: Scene; settings: RenderSettings }) => {
@@ -20,9 +29,9 @@ export const LeafCanvas = (props: { scene: Scene; settings: RenderSettings }) =>
 
   let frame = 0;
   createEffect(() => {
+    // Reading `props.scene` tracks everything the scene was built from, including the snapshot.
     const { scene, settings } = props;
     const { width, height, ratio } = size();
-    // Reading `props.scene` tracks everything the scene was built from, including the snapshot.
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
       if (canvas === undefined) return;
@@ -31,7 +40,7 @@ export const LeafCanvas = (props: { scene: Scene; settings: RenderSettings }) =>
       const context = canvas.getContext("2d");
       if (context === null) return;
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
-      renderPlain(context, scene, settings, width, height);
+      renderLeaf(context, scene, settings, leafFrame(width, height));
     });
   });
   onCleanup(() => {

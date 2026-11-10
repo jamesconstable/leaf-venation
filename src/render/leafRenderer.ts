@@ -1,0 +1,43 @@
+import type { Region } from "../geometry/region";
+import type { VenationSnapshot } from "../simulation/snapshot";
+import { drawOverlays, type Overlays } from "./overlays";
+import { prepareLeaf, type Frame } from "./prepare";
+import type { Style } from "./style";
+
+export type { Overlays } from "./overlays";
+export type { Frame } from "./prepare";
+
+export interface RenderSettings {
+  readonly style: Style;
+  readonly overlays: Overlays;
+  readonly veinWidthExponent: number;
+}
+
+export interface Scene {
+  /** The blade at its final size, in simulation units. */
+  readonly blade: Region;
+  /** In vein segment lengths. */
+  readonly killDistance: number;
+  readonly snapshot: VenationSnapshot | undefined;
+}
+
+/** Draws the leaf and any overlays onto a transparent canvas, framed within `frame`. */
+export const renderLeaf = (
+  context: CanvasRenderingContext2D,
+  scene: Scene,
+  settings: RenderSettings,
+  frame: Frame,
+): void => {
+  const leaf = prepareLeaf(scene.blade, scene.snapshot, frame, settings.veinWidthExponent);
+  settings.style.drawLeaf(context, leaf);
+  if (scene.snapshot !== undefined) {
+    drawOverlays(
+      context,
+      scene.snapshot,
+      leaf.view,
+      scene.killDistance,
+      settings.overlays,
+      settings.style.overlay,
+    );
+  }
+};

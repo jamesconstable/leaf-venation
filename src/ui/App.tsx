@@ -2,10 +2,13 @@ import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-j
 import { leafOutlines } from "../catalogue/leafOutlines";
 import { outlineRegion } from "../outline/outline";
 import { isStarShapedFrom } from "../outline/starShaped";
-import type { Overlays } from "../render/plainRenderer";
+import type { Overlays } from "../render/leafRenderer";
+import type { Style } from "../render/style";
+import { defaultStyle, styles } from "../render/styles";
 import { simulationConfig, type Growth, type Venation } from "../simulation/simulation";
 import type { VenationSnapshot } from "../simulation/snapshot";
 import { SimulationClient } from "../worker/simulationClient";
+import { Backdrop } from "./Backdrop";
 import { Choice, Section, Slider, Toggle } from "./controls";
 import { LeafCanvas } from "./LeafCanvas";
 
@@ -31,6 +34,7 @@ export const App = () => {
   const [randomSeed, setRandomSeed] = createSignal(newRandomSeed());
 
   // Render settings: changing these redraws without restarting.
+  const [style, setStyle] = createSignal<Style>(defaultStyle);
   const [overlays, setOverlays] = createSignal<Overlays>({ auxinSources: true, veinNodes: false });
   const [veinWidthExponent, setVeinWidthExponent] = createSignal(2);
 
@@ -103,7 +107,23 @@ export const App = () => {
   const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
 
   return (
-    <div class="app">
+    <div class="app" style={themeVariables(style())}>
+      <main class="stage">
+        <Backdrop backdrop={style().backdrop} outline={blade()?.outer ?? []} />
+        <LeafCanvas
+          scene={{
+            blade: config()?.blade ?? { outer: [], holes: [], bounds: emptyBounds, area: 0 },
+            killDistance: config()?.killDistance ?? 0,
+            snapshot: snapshot(),
+          }}
+          settings={{
+            style: style(),
+            overlays: overlays(),
+            veinWidthExponent: veinWidthExponent(),
+          }}
+        />
+      </main>
+
       <aside class="panel">
         <h1>Leaf Venation</h1>
 
@@ -240,6 +260,19 @@ export const App = () => {
           </div>
         </Section>
 
+        <Section title="Style">
+          <Choice
+            label="Style"
+            value={style().id}
+            options={styles.map(({ id, name, description }) => ({
+              value: id,
+              label: name,
+              title: description,
+            }))}
+            onChange={(id) => setStyle(styles.find((candidate) => candidate.id === id) ?? style())}
+          />
+        </Section>
+
         <Section title="Display">
           <Toggle
             label="Auxin sources"
@@ -293,19 +326,20 @@ export const App = () => {
             : `${statusLabels[snapshot()?.status ?? "growing"]} Step ${snapshot()?.stepCount ?? 0}, ${snapshot()?.xs.length ?? 0} vein nodes`}
         </p>
       </aside>
-
-      <main class="stage">
-        <LeafCanvas
-          scene={{
-            blade: config()?.blade ?? { outer: [], holes: [], bounds: emptyBounds, area: 0 },
-            killDistance: config()?.killDistance ?? 0,
-            snapshot: snapshot(),
-          }}
-          settings={{ overlays: overlays(), veinWidthExponent: veinWidthExponent() }}
-        />
-      </main>
     </div>
   );
 };
 
 const emptyBounds = { minX: 0, minY: 0, maxX: 1, maxY: 1 };
+
+/** The style's theme, as CSS custom properties for the interface. */
+const themeVariables = ({ theme }: Style) => ({
+  "--accent": theme.accent,
+  "--accent-glow": theme.accentGlow,
+  "--on-accent": theme.onAccent,
+  "--panel-tint": theme.panelTint,
+  "--panel-border": theme.panelBorder,
+  "--text": theme.text,
+  "--muted": theme.muted,
+  "--stage": theme.stage,
+});

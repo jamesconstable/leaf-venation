@@ -1,18 +1,12 @@
-/* Plain placeholder styling; the glass panel and full styles arrive in milestone 3. */
+/*
+ * The interface floats over the stage on a panel of frosted glass, tinted by
+ * the current style. Colours come from the style's theme (see App.tsx).
+ */
 
 :root {
-  --panel-background: #fbfaf6;
-  --panel-border: #e2ddd0;
-  --text: #2b2f26;
-  --muted: #6d7263;
-  --accent: #4f7a35;
-  --stage-background: #f3efe6;
-  font-family:
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    sans-serif;
-  color: var(--text);
+  font-family: "Inter Variable", system-ui, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
 }
 
 * {
@@ -21,42 +15,129 @@
 
 body {
   margin: 0;
-  background: var(--stage-background);
+  overflow: hidden;
 }
 
 .app {
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  height: 100vh;
+  color: var(--text);
+  background: var(--stage);
+  transition: background-color 0.6s ease;
 }
 
+/* The stage fills the window; the leaf is framed to the right of the panel. */
+.stage {
+  position: fixed;
+  inset: 0;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--stage);
+}
+
+.paper {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.bokeh-layer {
+  position: absolute;
+  left: -7.5%;
+  top: -7.5%;
+  width: 115%;
+  height: 115%;
+  animation: drift 70s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.bokeh-layer-1 {
+  animation-duration: 53s;
+  animation-direction: alternate-reverse;
+}
+
+.bokeh-layer-2 {
+  animation-duration: 41s;
+}
+
+.bokeh-layer-3 {
+  animation-duration: 33s;
+  animation-direction: alternate-reverse;
+  mix-blend-mode: screen;
+}
+
+@keyframes drift {
+  from {
+    transform: translate(-2%, -1.2%) scale(1.01);
+  }
+  to {
+    transform: translate(2%, 1.4%) scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bokeh-layer {
+    animation: none;
+  }
+}
+
+.leaf-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The glass panel. Flatter and more opaque than glassy, with very little distortion. */
 .panel {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  bottom: 16px;
+  width: 320px;
   overflow-y: auto;
-  padding: 20px;
-  background: var(--panel-background);
-  border-right: 1px solid var(--panel-border);
+  padding: 22px 20px;
+  border: 1px solid var(--panel-border);
+  border-radius: 20px;
+  background: var(--panel-tint);
+  backdrop-filter: blur(22px) saturate(1.35);
+  -webkit-backdrop-filter: blur(22px) saturate(1.35);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 18px 50px rgba(0, 0, 0, 0.18);
+  scrollbar-width: thin;
+  transition:
+    background-color 0.6s ease,
+    border-color 0.6s ease;
 }
 
 .panel h1 {
-  margin: 0 0 16px;
-  font-size: 1.3rem;
-  font-weight: 600;
+  margin: 0 0 18px;
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: 1.9rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
 }
 
 .section {
-  margin-bottom: 20px;
+  margin-bottom: 22px;
 }
 
 .section h2 {
-  margin: 0 0 8px;
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
+  margin: 0 0 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
 .field {
-  margin: 0 0 12px;
+  margin: 0 0 14px;
   padding: 0;
   border: 0;
 }
@@ -65,9 +146,9 @@ body {
 .field legend {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   padding: 0;
-  font-size: 0.9rem;
+  font-size: 0.92rem;
 }
 
 .field output {
@@ -83,10 +164,11 @@ input[type="range"] {
 .choice-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 7px;
 }
 
 .choice-option {
+  position: relative;
   cursor: pointer;
 }
 
@@ -98,17 +180,37 @@ input[type="range"] {
 
 .choice-option span {
   display: inline-block;
-  padding: 4px 10px;
-  border: 1px solid var(--panel-border);
+  padding: 5px 12px;
+  border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
   border-radius: 999px;
-  font-size: 0.85rem;
-  background: white;
+  font-size: 0.88rem;
+  background: color-mix(in srgb, white 45%, transparent);
+  transition:
+    background 0.25s ease,
+    box-shadow 0.25s ease,
+    color 0.25s ease;
 }
 
-.choice-option input:checked + span {
+.choice-option:hover span {
   border-color: var(--accent);
-  background: var(--accent);
-  color: white;
+}
+
+/*
+ * A selected option looks lit from behind: brightest at its heart, with a soft
+ * halo of the style's colour that spills onto its neighbours.
+ */
+.choice-option input:checked + span {
+  border-color: color-mix(in srgb, var(--accent) 70%, white);
+  color: var(--on-accent);
+  background: radial-gradient(
+    120% 140% at 50% 110%,
+    color-mix(in srgb, var(--accent) 55%, white) 0%,
+    var(--accent) 70%
+  );
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent),
+    0 0 14px 2px var(--accent-glow),
+    0 0 38px 10px color-mix(in srgb, var(--accent-glow) 45%, transparent);
 }
 
 .choice-option input:disabled + span {
@@ -126,7 +228,7 @@ input[type="range"] {
   gap: 8px;
   align-items: center;
   margin-bottom: 8px;
-  font-size: 0.9rem;
+  font-size: 0.92rem;
   accent-color: var(--accent);
 }
 
@@ -139,18 +241,21 @@ input[type="range"] {
 .seed-row input {
   flex: 1;
   min-width: 0;
-  padding: 4px 8px;
-  border: 1px solid var(--panel-border);
-  border-radius: 6px;
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, white 55%, transparent);
+  color: var(--text);
   font: inherit;
   font-family: ui-monospace, monospace;
 }
 
 button {
-  padding: 4px 12px;
-  border: 1px solid var(--panel-border);
-  border-radius: 6px;
-  background: white;
+  padding: 5px 13px;
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, white 55%, transparent);
+  color: var(--text);
   font: inherit;
   font-size: 0.9rem;
   cursor: pointer;
@@ -163,7 +268,7 @@ button:hover {
 .help {
   margin: 6px 0 0;
   font-size: 0.78rem;
-  line-height: 1.4;
+  line-height: 1.45;
   color: var(--muted);
 }
 
@@ -172,26 +277,22 @@ button:hover {
   color: var(--muted);
 }
 
-.stage {
-  position: relative;
-  min-width: 0;
-}
-
-.leaf-canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-@media (max-width: 700px) {
-  .app {
-    grid-template-columns: 1fr;
-    grid-template-rows: 60vh auto;
-    height: auto;
+@media (max-width: 899px) {
+  body {
+    overflow: auto;
   }
 
   .stage {
-    order: -1;
-    height: 60vh;
+    position: sticky;
+    top: 0;
+    height: 62vh;
+  }
+
+  .panel {
+    position: relative;
+    inset: auto;
+    width: auto;
+    margin: -24px 12px 12px;
+    overflow: visible;
   }
 }
