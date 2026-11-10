@@ -44,7 +44,19 @@ The paper notes in passing that marginal growth (scaling the margin about the ba
 
 We wanted users to choose the leaf's _final_ shape, which means inverting growth to get the starting shape. That sounds fragile, but the paper's non-uniform model makes growth rates depend only on a point's initial y coordinate, and its vertical displacement is a monotone integral already tabulated for the forward direction. The same lookup table runs it backwards (ADR 0003).
 
+### Isogonic growth fits the "final shape" coordinates naturally
+
+Under isogonic growth the paper doesn't move any points: it shrinks the unit of distance instead (λₜ = λ₀σ₀/σₜ). Read the other way round, the simulation runs in the coordinates of the _final_ leaf, where a vein segment length starts long and shrinks to 1 as the leaf reaches full size. Those are exactly the coordinates in which users define the leaf outline (ADR 0003), so the growth model and the "outline is the final shape" decision line up without any conversion. It also means veins laid down early are stretched as the leaf grows, which shows as long, straight early veins.
+
 ## Engineering
+
+### Golden tests make refactoring safe
+
+Adding growth touched nearly every line of the simulation step: distances gained a unit, blade tests gained a scale, and the step order changed. The no-growth golden fingerprints were byte-for-byte unchanged afterwards, which is strong evidence the refactor preserved the existing behaviour exactly; the new growth tests then only had to cover what was new.
+
+### TypeScript narrows annotated constants
+
+`const noGrowth: Growth = { type: "none" }` looks like a value of the whole `Growth` union, but TypeScript narrows it to the `{ type: "none" }` member from its initialiser. A default parameter `growth = noGrowth` then only accepted "no growth", and every test passing marginal or isogonic growth failed to type check. The fix is to annotate the parameter itself (`growth: Growth = noGrowth`). It also exposed a gap in our safeguards: only format and lint ran before each commit, so a commit with a type error went through. The pre-commit hook now type checks too.
 
 ### Bit-identical results across browsers rule out some of `Math`
 

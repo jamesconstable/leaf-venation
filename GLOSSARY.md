@@ -124,6 +124,18 @@ The whole blade expands at different rates in different directions, the same eve
 **Non-uniform anisotropic growth**:
 The blade expands at rates that vary with direction and with position in the blade.
 
+**Initial size**:
+The leaf's length when a growing simulation starts, as a fraction of its final length.
+_Avoid_: Starting scale, seed size
+
+**Growth per step**:
+How much the leaf's length increases each step, as a fraction of its final length.
+_Avoid_: Growth rate, speed (which is playback)
+
+**Ghost outline**:
+A faint outline of the final leaf, shown while the leaf is still growing toward it.
+_Avoid_: Target, preview
+
 ## Presentation
 
 **Style**:
