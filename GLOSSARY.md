@@ -82,6 +82,10 @@ _Avoid_: Tree pattern
 A venation pattern in which veins may rejoin (anastomose), forming loops.
 _Avoid_: Network pattern, reticulate (which is a narrower botanical term)
 
+**Anastomosis**:
+A join between two veins that grew toward the same auxin source, closing a loop.
+_Avoid_: Join, connection, merge, loop (a loop is the closed path an anastomosis creates)
+
 **Relative neighbourhood**:
 The set of vein nodes that an auxin source influences in closed venation: nodes close to the source but relatively far from one another.
 _Avoid_: Neighbours, RNG

@@ -10,4 +10,6 @@ export interface VenationSnapshot {
   readonly parents: Int32Array;
   /** Auxin source positions as interleaved x, y pairs. */
   readonly auxinSources: Float64Array;
+  /** Anastomoses as interleaved pairs of vein node indices. */
+  readonly anastomoses: Int32Array;
 }

@@ -38,10 +38,12 @@ Dependencies only point downward; a lint rule enforces it. `simulation/` exposes
 - **Deterministic** from (simulation parameters, random seed, model version) (ADR 0002).
 - **Scale**: specimen parameters are stored relative to the final leaf length. **Detail** sets the length in vein segment lengths. A **node budget** (~100k vein nodes) ends a runaway simulation gracefully. Table 1 of the paper is a starting point for tuning, not gospel.
 - **Termination**: a growth phase until the final outline is reached, then a settling phase with no growth, until no auxin sources remain and no darts are accepted for several steps, or no vein node has been added for several steps, or the node budget is hit. A new vein node within a tiny distance of an existing one is rejected and counts as no progress, which stops vein nodes stuttering.
-- **Deviations from the paper**, both only in cases where the paper's rules make no progress:
+- **Deviations from the paper**. The first two apply only where the paper's rules make no progress; the third fills a gap in the paper:
   - When a node's sources nearly cancel (on opposite sides of it), the averaged step points sideways onto an earlier node. In that case only, the node grows one vein toward each source separately.
   - In closed venation, a tagged vein node that cannot grow (blocked by a node that already reached the source) is released, as if it had left the source's zone of influence.
-- **Vein width**: Murray's law with the vein width exponent as a render setting. In closed venation, all child veins entering a node contribute equally.
+  - **Anastomoses**: the paper says when loops form but not how meeting veins connect. When a closed-venation source is removed, every vein node that arrived at it is joined to the one closest to the source. "Arrived" covers nodes that came within the kill distance, tagged nodes blocked just short, and tagged nodes excluded from the source's neighbourhood by a vein that just arrived (rather than turning away). Joins are skipped between adjacent nodes and when longer than twice the kill distance plus one vein segment length on each side. The vein graph is a tree plus a list of anastomoses.
+- **Kill distance** for closed venation defaults to the minimum, one vein segment length, as in every closed pattern in the paper; with a large kill distance closed venation looks just like open.
+- **Vein width**: Murray's law with the vein width exponent as a render setting, computed on the growth tree. An anastomosis is drawn as a continuation of the finer of the two veins it joins.
 - **Vein order**: the widest child continues its parent's order; the others take the next order. For closed venation it is computed on the growth tree.
 
 ## Leaf outlines and growth

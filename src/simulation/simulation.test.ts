@@ -45,8 +45,9 @@ const simulate = (venation: Venation, randomSeed: string, detail = 60, maxSteps 
 const fingerprint = (state: SimulationState): string => {
   const { xs, ys, parents } = veinNodeArrays(state.veinNodes);
   const sources = new Float64Array(state.auxinSources.flatMap((s) => [s.x, s.y]));
+  const anastomoses = new Int32Array(state.anastomoses.flat());
   let hash = 0x811c9dc5;
-  for (const array of [xs, ys, parents, sources]) {
+  for (const array of [xs, ys, parents, sources, anastomoses]) {
     for (const byte of new Uint8Array(array.buffer, array.byteOffset, array.byteLength)) {
       hash = Math.imul(hash ^ byte, 0x01000193);
     }
@@ -148,6 +149,40 @@ describe.each(venations)("%s venation", (venation) => {
   });
 });
 
+describe("anastomoses", () => {
+  it("never occur in open venation", () => {
+    fc.assert(
+      fc.property(randomSeed, (seed) => {
+        expect(simulate("open", seed, 40).anastomoses).toEqual([]);
+      }),
+      propertyOptions,
+    );
+  });
+
+  it("close loops in closed venation", () => {
+    expect(simulate("closed", "loops").anastomoses.length).toBeGreaterThan(5);
+  });
+
+  it("join distinct, non-adjacent vein nodes that are close together", () => {
+    fc.assert(
+      fc.property(randomSeed, (seed) => {
+        const state = simulate("closed", seed, 60);
+        const { xs, ys, parents } = veinNodeArrays(state.veinNodes);
+        const keys = state.anastomoses.map(([a, b]) => `${a},${b}`);
+        expect(new Set(keys).size).toBe(keys.length);
+        for (const [a, b] of state.anastomoses) {
+          expect(a).toBeLessThan(b);
+          expect(b).toBeLessThan(state.veinNodes.count);
+          expect(parents[a] === b || parents[b] === a).toBe(false);
+          const length = distance(xs[a] ?? NaN, ys[a] ?? NaN, xs[b] ?? NaN, ys[b] ?? NaN);
+          expect(length).toBeLessThanOrEqual(2 * state.config.killDistance + 2);
+        }
+      }),
+      propertyOptions,
+    );
+  });
+});
+
 describe("simulation", () => {
   it("leaves the state it was given unchanged", () => {
     const before = simulate("closed", "pure", 60, 40);
@@ -166,7 +201,7 @@ describe("simulation", () => {
       closed: fingerprint(simulate("closed", "golden")),
     }).toMatchInlineSnapshot(`
       {
-        "closed": "9e61636c",
+        "closed": "70590241",
         "open": "f57d16d3",
       }
     `);

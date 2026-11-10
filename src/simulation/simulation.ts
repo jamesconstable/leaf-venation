@@ -8,6 +8,7 @@ import {
   appendVeinNodes,
   emptyVeinNodes,
   nearestVeinNode,
+  veinNodeParent,
   veinNodeX,
   veinNodeY,
   type VeinNodes,
@@ -88,7 +89,15 @@ export interface AuxinSource {
    * of them have reached it or turned away. `undefined` until then.
    */
   readonly tagged?: readonly number[];
+  /**
+   * Closed venation only: the vein nodes that have reached this source (or were
+   * blocked just short of it). They are joined by anastomoses when it is removed.
+   */
+  readonly arrived?: readonly number[];
 }
+
+/** A join between two vein nodes whose veins grew toward the same auxin source, closing a loop. */
+export type Anastomosis = readonly [number, number];
 
 export type SimulationStatus = "growing" | "settled" | "budgetReached";
 
@@ -97,6 +106,8 @@ export interface SimulationState {
   readonly stepCount: number;
   readonly veinNodes: VeinNodes;
   readonly auxinSources: readonly AuxinSource[];
+  /** Closed venation only; always empty for open venation. */
+  readonly anastomoses: readonly Anastomosis[];
   readonly random: RandomState;
   readonly stepsWithoutGrowth: number;
   readonly status: SimulationStatus;
@@ -113,6 +124,7 @@ export const initialState = (config: SimulationConfig): SimulationState => {
     stepCount: 0,
     veinNodes: appender.finish(),
     auxinSources: [],
+    anastomoses: [],
     random: randomStateFromSeed(config.randomSeed),
     stepsWithoutGrowth: 0,
     status: "growing",
@@ -124,8 +136,9 @@ const gridCellSize = (config: SimulationConfig) => Math.max(2, config.birthDista
 /**
  * Advances the simulation by one step (Runions et al. 2005, Section 3.3):
  * place new auxin sources by dart throwing, find which vein nodes each source
- * influences, remove sources the veins have reached, then grow a new vein node
- * from every influenced node. A finished simulation is returned unchanged.
+ * influences, remove sources the veins have reached (joining the veins that
+ * met there, in closed venation), then grow a new vein node from every
+ * influenced node. A finished simulation is returned unchanged.
  */
 export const step = (state: SimulationState): SimulationState => {
   if (state.status !== "growing") return state;
@@ -143,6 +156,8 @@ export const step = (state: SimulationState): SimulationState => {
     distanceSquared(veinNodeX(state.veinNodes, v), veinNodeY(state.veinNodes, v), s.x, s.y) < kill;
 
   const surviving: { source: AuxinSource; influences: readonly number[] }[] = [];
+  const anastomoses = [...state.anastomoses];
+  const joined = new Set(anastomoses.map(([a, b]) => `${a},${b}`));
   placed.forEach((source, i) => {
     const neighbourhood = influenced[i] ?? [];
     if (config.venation === "open") {
@@ -152,15 +167,33 @@ export const step = (state: SimulationState): SimulationState => {
       return;
     }
     const pending = neighbourhood.filter((v) => !reached(v, source));
+    // A tagged vein dropping out of the neighbourhood has usually been excluded
+    // by a vein that just arrived, not turned away, so it is joined as well.
+    const excluded = (source.tagged ?? []).filter((v) => !neighbourhood.includes(v));
+    const arrived = union(source.arrived ?? [], [
+      ...neighbourhood.filter((v) => reached(v, source)),
+      ...excluded,
+    ]);
     const tagged =
       source.tagged === undefined
         ? pending.length < neighbourhood.length
           ? pending
           : undefined
         : source.tagged.filter((v) => pending.includes(v));
-    if (tagged?.length === 0) return;
+    if (tagged?.length === 0) {
+      for (const join of joinArrivals(state.veinNodes, source, arrived, config)) {
+        // Two veins can meet at more than one source; join them once.
+        const key = `${join[0]},${join[1]}`;
+        if (!joined.has(key)) anastomoses.push(join);
+        joined.add(key);
+      }
+      return;
+    }
     surviving.push({
-      source: tagged === undefined ? source : { x: source.x, y: source.y, tagged },
+      source:
+        tagged === undefined
+          ? source
+          : { x: source.x, y: source.y, tagged, ...(arrived.length > 0 ? { arrived } : {}) },
       influences: pending,
     });
   });
@@ -169,12 +202,17 @@ export const step = (state: SimulationState): SimulationState => {
   const added = veinNodes.count - state.veinNodes.count;
   // Tags pass to the new vein nodes. A tagged node that could not grow (blocked
   // by a node that already reached the source) is released, as if it had left
-  // the source's zone of influence; otherwise the source would wait forever.
-  const auxinSources = surviving.map(({ source }) =>
-    source.tagged === undefined
-      ? source
-      : { ...source, tagged: source.tagged.flatMap((v) => children.get(v) ?? []) },
-  );
+  // the source's zone of influence; otherwise the source would wait forever. It
+  // counts as having arrived, so it is joined to the others.
+  const auxinSources = surviving.map(({ source }) => {
+    if (source.tagged === undefined) return source;
+    const blocked = source.tagged.filter((v) => !children.has(v));
+    return {
+      ...source,
+      tagged: source.tagged.flatMap((v) => children.get(v) ?? []),
+      arrived: union(source.arrived ?? [], blocked),
+    };
+  });
 
   const stepsWithoutGrowth = added > 0 ? 0 : state.stepsWithoutGrowth + 1;
   const status: SimulationStatus =
@@ -189,10 +227,45 @@ export const step = (state: SimulationState): SimulationState => {
     stepCount: state.stepCount + 1,
     veinNodes,
     auxinSources,
+    anastomoses,
     random: rng.state(),
     stepsWithoutGrowth,
     status,
   };
+};
+
+const union = (a: readonly number[], b: readonly number[]): number[] =>
+  b.length === 0 ? [...a] : [...a, ...b.filter((v) => !a.includes(v))];
+
+/**
+ * Joins the veins that met at a removed source (Runions et al. 2005 describe
+ * when loops form but not how the veins connect; see docs/design.md). Every
+ * arrived node is joined to the one closest to the source, unless they are
+ * already adjacent in the vein graph or implausibly far apart.
+ */
+const joinArrivals = (
+  nodes: VeinNodes,
+  source: AuxinSource,
+  arrived: readonly number[],
+  config: SimulationConfig,
+): Anastomosis[] => {
+  if (arrived.length < 2) return [];
+  const x = (v: number) => veinNodeX(nodes, v);
+  const y = (v: number) => veinNodeY(nodes, v);
+  const hub = arrived.reduce((best, v) =>
+    distanceSquared(x(v), y(v), source.x, source.y) <
+    distanceSquared(x(best), y(best), source.x, source.y)
+      ? v
+      : best,
+  );
+  const maximumLength = 2 * config.killDistance + 2;
+  const parent = (v: number) => veinNodeParent(nodes, v);
+  const adjacent = (a: number, b: number) =>
+    parent(a) === b || parent(b) === a || (parent(a) >= 0 && parent(a) === parent(b));
+  return arrived
+    .filter((v) => v !== hub && !adjacent(v, hub))
+    .filter((v) => distanceSquared(x(v), y(v), x(hub), y(hub)) <= maximumLength * maximumLength)
+    .map((v): Anastomosis => [Math.min(v, hub), Math.max(v, hub)]);
 };
 
 /**

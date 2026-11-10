@@ -12,6 +12,7 @@ const progress = (from: number, xs: number[]): ProgressMessage => ({
   ys: new Float64Array(xs.map((x) => -x)),
   parents: new Int32Array(xs.map((_, i) => from + i - 1)),
   auxinSources: new Float64Array(),
+  anastomoses: new Int32Array(),
 });
 
 describe("SnapshotAccumulator", () => {

@@ -14,7 +14,11 @@ In closed venation a source survives until every vein growing toward it has "rea
 
 ### Closing a loop is not the same as joining veins
 
-The paper describes when closed venation loops _form_ (several veins growing toward one source) but not how the meeting veins become one vessel. Taken literally, both veins stop within the kill distance of the source, 1–4 vein segment lengths apart, and nothing connects them. Measured on one ovate leaf, 61 of 143 vein tips ended within 1.5 vein segment lengths of another vein without being connected. Drawn faithfully, those loops look open. The paper's figures show joined loops, so some explicit joining step must have existed in the original implementation, or arose from its rendering.
+The paper describes when closed venation loops _form_ (several veins growing toward one source) but not how the meeting veins become one vessel. Taken literally, both veins stop within the kill distance of the source, 1–4 vein segment lengths apart, and nothing connects them. Measured on one ovate leaf, 61 of 143 vein tips ended within 1.5 vein segment lengths of another vein without being connected. Drawn faithfully, those loops look open, and that is how the problem showed up: in testing, no combination of settings seemed to produce closed venation. The paper's figures show joined loops, so some explicit joining step must have existed in the original implementation, or arose from its rendering.
+
+We added explicit **anastomoses**: when a source is removed, the veins that arrived at it are joined. Afterwards every one of those 61 touching tips was joined, and joins were short (median 0.96, maximum 1.9 vein segment lengths).
+
+A second, subtler cause of gaps: the paper releases a tagged vein when it "leaves the source's zone of influence". But once the first vein's tip sits right at the source, it often _excludes_ the second vein from the source's relative neighbourhood, so the second vein counts as having left and stops a few vein segment lengths short, although it never turned away. Counting such veins as arrived too raised the joined near misses (tips 1.5–4 vein segment lengths from another vein) from 21 to 85 of 206 on a denser leaf. The remaining near misses look like the free-ending veinlets real closed venation also has, which the paper lists as future work.
 
 ### Closed venation needs a tiny kill distance
 

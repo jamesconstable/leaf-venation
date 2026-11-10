@@ -21,6 +21,8 @@ export interface ProgressMessage {
   readonly parents: Int32Array;
   /** All current auxin sources, as interleaved x, y pairs. */
   readonly auxinSources: Float64Array;
+  /** All anastomoses so far, as interleaved pairs of vein node indices. */
+  readonly anastomoses: Int32Array;
 }
 
 export type FromWorker = ProgressMessage;

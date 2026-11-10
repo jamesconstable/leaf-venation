@@ -12,6 +12,7 @@ let sentCount = 0;
 const reportProgress = (current: SimulationState) => {
   const { xs, ys, parents } = veinNodeArrays(current.veinNodes, sentCount);
   const auxinSources = new Float64Array(current.auxinSources.flatMap((s) => [s.x, s.y]));
+  const anastomoses = new Int32Array(current.anastomoses.flat());
   const message: FromWorker = {
     type: "progress",
     generation,
@@ -22,9 +23,16 @@ const reportProgress = (current: SimulationState) => {
     ys,
     parents,
     auxinSources,
+    anastomoses,
   };
   sentCount = current.veinNodes.count;
-  self.postMessage(message, [xs.buffer, ys.buffer, parents.buffer, auxinSources.buffer]);
+  self.postMessage(message, [
+    xs.buffer,
+    ys.buffer,
+    parents.buffer,
+    auxinSources.buffer,
+    anastomoses.buffer,
+  ]);
 };
 
 self.onmessage = ({ data }: MessageEvent<ToWorker>) => {

@@ -35,6 +35,7 @@ export class SnapshotAccumulator {
       ys: this.ys.subarray(0, this.count),
       parents: this.parents.subarray(0, this.count),
       auxinSources: message.auxinSources,
+      anastomoses: message.anastomoses,
     };
   }
 }

@@ -90,16 +90,24 @@ const drawVeins = (
     maxWidth === 1 ? finest : finest + ((widest - finest) * (w - 1)) / (maxWidth - 1);
 
   const buckets = Array.from({ length: WIDTH_BUCKETS }, () => new Path2D());
-  for (let i = 0; i < parents.length; i++) {
-    const parent = parents[i] ?? -1;
-    if (parent < 0) continue;
+  const addSegment = (a: number, b: number, width: number) => {
     const bucket = Math.min(
       WIDTH_BUCKETS - 1,
-      Math.floor(((pixels(widths[i] ?? 1) - finest) / (widest - finest || 1)) * WIDTH_BUCKETS),
+      Math.floor(((pixels(width) - finest) / (widest - finest || 1)) * WIDTH_BUCKETS),
     );
     const path = buckets[bucket];
-    path?.moveTo(toScreenX(view, xs[parent] ?? 0), toScreenY(view, ys[parent] ?? 0));
-    path?.lineTo(toScreenX(view, xs[i] ?? 0), toScreenY(view, ys[i] ?? 0));
+    path?.moveTo(toScreenX(view, xs[a] ?? 0), toScreenY(view, ys[a] ?? 0));
+    path?.lineTo(toScreenX(view, xs[b] ?? 0), toScreenY(view, ys[b] ?? 0));
+  };
+  for (let i = 0; i < parents.length; i++) {
+    const parent = parents[i] ?? -1;
+    if (parent >= 0) addSegment(parent, i, widths[i] ?? 1);
+  }
+  // An anastomosis is drawn as a continuation of the finer of the two veins it joins.
+  const { anastomoses } = snapshot;
+  for (let k = 0; k + 1 < anastomoses.length; k += 2) {
+    const [a, b] = [anastomoses[k] ?? 0, anastomoses[k + 1] ?? 0];
+    addSegment(a, b, Math.min(widths[a] ?? 1, widths[b] ?? 1));
   }
   context.strokeStyle = palette.vein;
   context.lineCap = "round";
