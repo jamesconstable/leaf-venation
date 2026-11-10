@@ -40,7 +40,7 @@ Dependencies only point downward; a lint rule enforces it. `simulation/` exposes
 
 ## Leaf outlines and growth
 
-- A leaf outline is a closed cubic Bézier margin path in normalised coordinates (base at the origin, tip along +y, length 1), plus zero or more **fenestration** paths, its initial vein nodes and a *symmetric* flag.
+- A leaf outline is a closed cubic Bézier margin path in normalised coordinates (base at the origin, tip along +y, length 1), plus zero or more **fenestration** paths, its initial vein nodes and a _symmetric_ flag.
 - **Margin teeth** are procedural (summed triangular waveforms), applied to the final outline.
 - The leaf outline is the **final** shape; the starting outline is derived by inverting the growth (ADR 0003). A faint ghost of the final outline is shown during growth.
 - **Marginal growth** is only offered for outlines that are star-shaped from the base, checked automatically. Lobed and fenestrated outlines can still use isogonic or anisotropic growth.
@@ -52,7 +52,7 @@ Dependencies only point downward; a lint rule enforces it. `simulation/` exposes
 - **Simulation parameters** restart the simulation, debounced to the end of a slider drag.
 - **Render settings** (style, overlays, vein width exponent) re-render without restarting.
 - **Playback** (speed, pause, scrub) never restarts.
-- A **specimen** holds only leaf-defining simulation parameters. Random seed, detail and style sit outside it. A specimen may *suggest* a style, applied only when it is picked fresh. Changing any specimen parameter deselects the specimen and the leaf becomes **custom**.
+- A **specimen** holds only leaf-defining simulation parameters. Random seed, detail and style sit outside it. A specimen may _suggest_ a style, applied only when it is picked fresh. Changing any specimen parameter deselects the specimen and the leaf becomes **custom**.
 - The UI explains the random seed with a line of help text, since "seed" is otherwise ambiguous in a plant app.
 - **First visit**: a random pick from a curated list of specimen and style pairings, already growing.
 

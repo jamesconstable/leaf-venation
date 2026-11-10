@@ -5,7 +5,7 @@ A browser demo that grows leaf venation patterns using the algorithms of Runions
 ## Leaf anatomy
 
 **Leaf outline**:
-The shape of a single simple leaf blade *at the end* of the simulation, as chosen by the user, including its base, any fenestrations, and its initial vein nodes.
+The shape of a single simple leaf blade _at the end_ of the simulation, as chosen by the user, including its base, any fenestrations, and its initial vein nodes.
 _Avoid_: Leaf shape (in code), contour, silhouette, final shape
 
 **Starting outline**:
