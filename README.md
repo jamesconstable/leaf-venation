@@ -7,3 +7,12 @@ A browser demo that grows leaf venation patterns, based on:
 - [Brief](docs/brief.md)
 - [Design](docs/design.md) · [Roadmap](docs/roadmap.md)
 - [Glossary](GLOSSARY.md) · [Architecture decisions](docs/adr/)
+
+## Development
+
+```sh
+npm install
+npx lefthook install   # git hooks: format and lint on commit, full check on push
+npm run dev            # local server with hot reload
+npm run check          # typecheck, lint, format check and tests
+```
