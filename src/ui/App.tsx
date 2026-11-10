@@ -54,6 +54,7 @@ export const App = () => {
         killDistance: killDistance(),
         birthDistance: birthDistance(),
         dartDensity: dartDensity(),
+        growth: { type: "none" },
       },
       detail: detail(),
       randomSeed: randomSeed(),

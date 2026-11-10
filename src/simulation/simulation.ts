@@ -24,6 +24,20 @@ export const MODEL_VERSION = 1;
 export type Venation = "open" | "closed";
 
 /**
+ * How the blade grows during the simulation (Runions et al. 2005, Section 3.3).
+ * Both growth types increase the leaf length linearly, from `initialSize` to
+ * the full size, by `growthPerStep` each step; both are fractions of the final
+ * leaf length.
+ */
+export type Growth =
+  | { readonly type: "none" }
+  | {
+      readonly type: "marginal" | "isogonic";
+      readonly initialSize: number;
+      readonly growthPerStep: number;
+    };
+
+/**
  * The leaf-defining simulation parameters, with distances relative to the leaf
  * length so that they keep their meaning at any detail.
  */
@@ -35,16 +49,29 @@ export interface VenationParameters {
   readonly birthDistance: number;
   /** Darts thrown per step per unit area of a blade of length 1. */
   readonly dartDensity: number;
+  readonly growth: Growth;
 }
 
-/** A complete, self-contained description of one simulation, in vein segment lengths. */
+/**
+ * A complete, self-contained description of one simulation, in vein segment
+ * lengths, at the leaf's final size.
+ *
+ * Simulation coordinates are those of the final leaf. Under marginal growth the
+ * blade grows about its base within them, and vein nodes and auxin sources stay
+ * put. Under isogonic growth everything grows together, so instead of moving
+ * every point the simulation shrinks its unit of distance (Runions et al. 2005,
+ * "Uniform growth"): a vein segment length is 1 / size in these coordinates.
+ */
 export interface SimulationConfig {
+  /** The blade at its final size. */
   readonly blade: Region;
   readonly initialVeinNodes: readonly Vec2[];
   readonly venation: Venation;
   readonly killDistance: number;
   readonly birthDistance: number;
+  /** Darts per step once the leaf reaches its final size; fewer while it is smaller. */
   readonly dartsPerStep: number;
+  readonly growth: Growth;
   readonly randomSeed: string;
   readonly nodeBudget: number;
   /** The simulation has settled after this many consecutive steps without a new vein node. */
@@ -74,6 +101,7 @@ export const simulationConfig = (input: SimulationInput): SimulationConfig => {
     killDistance: Math.max(1, parameters.killDistance * detail),
     birthDistance: Math.max(1, parameters.birthDistance * detail),
     dartsPerStep: Math.max(1, Math.round(parameters.dartDensity * input.blade.area)),
+    growth: parameters.growth,
     randomSeed: input.randomSeed,
     nodeBudget: DEFAULT_NODE_BUDGET,
     settleSteps: 20,
@@ -109,6 +137,8 @@ export interface SimulationState {
   /** Closed venation only; always empty for open venation. */
   readonly anastomoses: readonly Anastomosis[];
   readonly random: RandomState;
+  /** The current leaf length as a fraction of its final length. */
+  readonly size: number;
   readonly stepsWithoutGrowth: number;
   readonly status: SimulationStatus;
 }
@@ -116,9 +146,32 @@ export interface SimulationState {
 /** New vein nodes closer than this to an existing one are rejected (they would stutter). */
 const MINIMUM_SEPARATION = 0.1;
 
+/** How much the blade is scaled, about its base, from its final size. */
+export const bladeScale = (state: SimulationState): number => state.size;
+
+/** How much vein nodes and auxin sources are scaled from simulation coordinates to the current leaf. */
+export const veinScale = (state: SimulationState): number =>
+  state.config.growth.type === "isogonic" ? state.size : 1;
+
+/** One vein segment length, in simulation coordinates. */
+const unit = (state: SimulationState): number => 1 / veinScale(state);
+
+const inBlade = (state: SimulationState, x: number, y: number): boolean =>
+  state.config.growth.type === "marginal"
+    ? regionContains(state.config.blade, x / state.size, y / state.size)
+    : regionContains(state.config.blade, x, y);
+
+const nextSize = (state: SimulationState): number =>
+  state.config.growth.type === "none"
+    ? 1
+    : Math.min(1, state.size + state.config.growth.growthPerStep);
+
 export const initialState = (config: SimulationConfig): SimulationState => {
+  const size = config.growth.type === "none" ? 1 : config.growth.initialSize;
+  // Under marginal growth the initial vein nodes start where the smaller blade's base region is.
+  const scale = config.growth.type === "marginal" ? size : 1;
   const appender = appendVeinNodes(emptyVeinNodes(config.blade.bounds, gridCellSize(config)));
-  for (const { x, y } of config.initialVeinNodes) appender.append(x, y, -1);
+  for (const { x, y } of config.initialVeinNodes) appender.append(x * scale, y * scale, -1);
   return {
     config,
     stepCount: 0,
@@ -126,6 +179,7 @@ export const initialState = (config: SimulationConfig): SimulationState => {
     auxinSources: [],
     anastomoses: [],
     random: randomStateFromSeed(config.randomSeed),
+    size,
     stepsWithoutGrowth: 0,
     status: "growing",
   };
@@ -135,13 +189,14 @@ const gridCellSize = (config: SimulationConfig) => Math.max(2, config.birthDista
 
 /**
  * Advances the simulation by one step (Runions et al. 2005, Section 3.3):
- * place new auxin sources by dart throwing, find which vein nodes each source
+ * grow the blade, place new auxin sources by dart throwing, find which vein nodes each source
  * influences, remove sources the veins have reached (joining the veins that
  * met there, in closed venation), then grow a new vein node from every
  * influenced node. A finished simulation is returned unchanged.
  */
-export const step = (state: SimulationState): SimulationState => {
-  if (state.status !== "growing") return state;
+export const step = (previous: SimulationState): SimulationState => {
+  if (previous.status !== "growing") return previous;
+  const state = { ...previous, size: nextSize(previous) };
   const { config } = state;
   const rng = random(state.random);
 
@@ -151,7 +206,8 @@ export const step = (state: SimulationState): SimulationState => {
       ? placed.map((s) => [nearestVeinNode(state.veinNodes, s.x, s.y)].filter((v) => v >= 0))
       : closedInfluence(state, placed);
 
-  const kill = config.killDistance * config.killDistance;
+  const killDistance = config.killDistance * unit(state);
+  const kill = killDistance * killDistance;
   const reached = (v: number, s: AuxinSource) =>
     distanceSquared(veinNodeX(state.veinNodes, v), veinNodeY(state.veinNodes, v), s.x, s.y) < kill;
 
@@ -181,7 +237,7 @@ export const step = (state: SimulationState): SimulationState => {
           : undefined
         : source.tagged.filter((v) => pending.includes(v));
     if (tagged?.length === 0) {
-      for (const join of joinArrivals(state.veinNodes, source, arrived, config)) {
+      for (const join of joinArrivals(state, source, arrived)) {
         // Two veins can meet at more than one source; join them once.
         const key = `${join[0]},${join[1]}`;
         if (!joined.has(key)) anastomoses.push(join);
@@ -198,7 +254,7 @@ export const step = (state: SimulationState): SimulationState => {
     });
   });
 
-  const { veinNodes, children } = grow(state.veinNodes, surviving, config);
+  const { veinNodes, children } = grow(state, surviving);
   const added = veinNodes.count - state.veinNodes.count;
   // Tags pass to the new vein nodes. A tagged node that could not grow (blocked
   // by a node that already reached the source) is released, as if it had left
@@ -214,7 +270,8 @@ export const step = (state: SimulationState): SimulationState => {
     };
   });
 
-  const stepsWithoutGrowth = added > 0 ? 0 : state.stepsWithoutGrowth + 1;
+  // The simulation can only settle once the blade has finished growing.
+  const stepsWithoutGrowth = added > 0 || state.size < 1 ? 0 : state.stepsWithoutGrowth + 1;
   const status: SimulationStatus =
     veinNodes.count >= config.nodeBudget
       ? "budgetReached"
@@ -229,6 +286,7 @@ export const step = (state: SimulationState): SimulationState => {
     auxinSources,
     anastomoses,
     random: rng.state(),
+    size: state.size,
     stepsWithoutGrowth,
     status,
   };
@@ -244,12 +302,12 @@ const union = (a: readonly number[], b: readonly number[]): number[] =>
  * already adjacent in the vein graph or implausibly far apart.
  */
 const joinArrivals = (
-  nodes: VeinNodes,
+  state: SimulationState,
   source: AuxinSource,
   arrived: readonly number[],
-  config: SimulationConfig,
 ): Anastomosis[] => {
   if (arrived.length < 2) return [];
+  const nodes = state.veinNodes;
   const x = (v: number) => veinNodeX(nodes, v);
   const y = (v: number) => veinNodeY(nodes, v);
   const hub = arrived.reduce((best, v) =>
@@ -258,7 +316,7 @@ const joinArrivals = (
       ? v
       : best,
   );
-  const maximumLength = 2 * config.killDistance + 2;
+  const maximumLength = (2 * state.config.killDistance + 2) * unit(state);
   const parent = (v: number) => veinNodeParent(nodes, v);
   const adjacent = (a: number, b: number) =>
     parent(a) === b || parent(b) === a || (parent(a) >= 0 && parent(a) === parent(b));
@@ -274,8 +332,15 @@ const joinArrivals = (
  * source and vein node (Runions et al. 2005, "Auxin source placement").
  */
 const throwDarts = (state: SimulationState, next: () => number): AuxinSource[] => {
-  const { blade, birthDistance, dartsPerStep } = state.config;
-  const { minX, minY, maxX, maxY } = blade.bounds;
+  const { blade, dartsPerStep } = state.config;
+  const birthDistance = state.config.birthDistance * unit(state);
+  // Darts land on the current blade, at the same density per unit of leaf area at any size.
+  const scale = state.config.growth.type === "marginal" ? state.size : 1;
+  const minX = blade.bounds.minX * scale;
+  const minY = blade.bounds.minY * scale;
+  const maxX = blade.bounds.maxX * scale;
+  const maxY = blade.bounds.maxY * scale;
+  const darts = Math.max(1, Math.round(dartsPerStep * state.size * state.size));
   const xs = state.auxinSources.map((s) => s.x);
   const ys = state.auxinSources.map((s) => s.y);
   const grid = new SpatialGrid(blade.bounds, gridCellSize(state.config));
@@ -284,10 +349,10 @@ const throwDarts = (state: SimulationState, next: () => number): AuxinSource[] =
   });
 
   const accepted: AuxinSource[] = [];
-  for (let dart = 0; dart < dartsPerStep; dart++) {
+  for (let dart = 0; dart < darts; dart++) {
     const x = minX + next() * (maxX - minX);
     const y = minY + next() * (maxY - minY);
-    if (!regionContains(blade, x, y)) continue;
+    if (!inBlade(state, x, y)) continue;
     if (grid.anyWithin({ xs, ys }, xs.length, x, y, birthDistance)) continue;
     if (anyVeinNodeWithin(state.veinNodes, x, y, birthDistance)) continue;
     grid.insert(xs.length, x, y);
@@ -315,10 +380,11 @@ const closedInfluence = (state: SimulationState, sources: readonly AuxinSource[]
  * instead grows one vein toward each of its sources separately.
  */
 const grow = (
-  nodes: VeinNodes,
+  state: SimulationState,
   surviving: readonly { source: AuxinSource; influences: readonly number[] }[],
-  config: SimulationConfig,
 ) => {
+  const nodes = state.veinNodes;
+  const segment = unit(state);
   const pulls = new Map<number, { x: number; y: number }[]>();
   for (const { source, influences } of surviving) {
     for (const v of influences) {
@@ -334,11 +400,11 @@ const grow = (
   const children = new Map<number, number[]>();
   const tryGrow = (v: number, dx: number, dy: number): boolean => {
     const length = Math.sqrt(dx * dx + dy * dy);
-    if (length < 1e-9 || appender.current().count >= config.nodeBudget) return false;
-    const x = veinNodeX(nodes, v) + dx / length;
-    const y = veinNodeY(nodes, v) + dy / length;
-    if (!regionContains(config.blade, x, y)) return false;
-    if (anyVeinNodeWithin(appender.current(), x, y, MINIMUM_SEPARATION)) return false;
+    if (length < 1e-9 || appender.current().count >= state.config.nodeBudget) return false;
+    const x = veinNodeX(nodes, v) + (segment * dx) / length;
+    const y = veinNodeY(nodes, v) + (segment * dy) / length;
+    if (!inBlade(state, x, y)) return false;
+    if (anyVeinNodeWithin(appender.current(), x, y, MINIMUM_SEPARATION * segment)) return false;
     const child = appender.append(x, y, v);
     children.set(v, [...(children.get(v) ?? []), child]);
     return true;
