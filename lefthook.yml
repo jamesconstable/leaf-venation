@@ -1,0 +1,14 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: format
+      glob: "*.{ts,tsx,js,json,css,html,md,yml}"
+      run: npx prettier --check {staged_files}
+    - name: lint
+      glob: "*.{ts,tsx,js}"
+      run: npx eslint {staged_files}
+
+pre-push:
+  jobs:
+    - name: check
+      run: npm run check

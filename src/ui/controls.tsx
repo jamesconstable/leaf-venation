@@ -1,0 +1,101 @@
+import { createSignal, For, type JSX } from "solid-js";
+
+let nextId = 0;
+const uniqueId = (prefix: string) => `${prefix}-${nextId++}`;
+
+export const Section = (props: { title: string; children: JSX.Element }) => (
+  <section class="section">
+    <h2>{props.title}</h2>
+    {props.children}
+  </section>
+);
+
+/**
+ * A labelled slider. The displayed value follows the thumb while dragging, but
+ * `onCommit` only fires on release, so dragging a simulation parameter restarts
+ * the simulation once rather than on every pixel.
+ */
+export const Slider = (props: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  format?: (value: number) => string;
+  onCommit: (value: number) => void;
+}) => {
+  const id = uniqueId("slider");
+  const [draft, setDraft] = createSignal<number | undefined>();
+  const shown = () => draft() ?? props.value;
+  return (
+    <div class="field">
+      <label for={id}>
+        <span>{props.label}</span>
+        <output>{props.format?.(shown()) ?? shown()}</output>
+      </label>
+      <input
+        id={id}
+        type="range"
+        min={props.min}
+        max={props.max}
+        step={props.step}
+        value={shown()}
+        onInput={(event) => setDraft(event.currentTarget.valueAsNumber)}
+        onChange={(event) => {
+          // Read the value first: clearing the draft re-renders the input with the old value.
+          props.onCommit(event.currentTarget.valueAsNumber);
+          setDraft(undefined);
+        }}
+      />
+    </div>
+  );
+};
+
+export const Choice = <T extends string>(props: {
+  label: string;
+  value: T;
+  options: readonly { value: T; label: string; title?: string }[];
+  onChange: (value: T) => void;
+}) => {
+  // A shared name groups the radios, so arrow keys move between options.
+  const name = uniqueId("choice");
+  return (
+    <fieldset class="field choice">
+      <legend>{props.label}</legend>
+      <div class="choice-options">
+        <For each={props.options}>
+          {(option) => (
+            <label class="choice-option" title={option.title}>
+              <input
+                type="radio"
+                name={name}
+                checked={props.value === option.value}
+                onChange={() => {
+                  props.onChange(option.value);
+                }}
+              />
+              <span>{option.label}</span>
+            </label>
+          )}
+        </For>
+      </div>
+    </fieldset>
+  );
+};
+
+export const Toggle = (props: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) => (
+  <label class="toggle">
+    <input
+      type="checkbox"
+      checked={props.checked}
+      onChange={(event) => {
+        props.onChange(event.currentTarget.checked);
+      }}
+    />
+    <span>{props.label}</span>
+  </label>
+);

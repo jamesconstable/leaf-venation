@@ -5,7 +5,7 @@ A browser demo that grows leaf venation patterns using the algorithms of Runions
 ## Leaf anatomy
 
 **Leaf outline**:
-The shape of a single simple leaf blade *at the end* of the simulation, as chosen by the user, including its base, any fenestrations, and its initial vein nodes.
+The shape of a single simple leaf blade _at the end_ of the simulation, as chosen by the user, including its base, any fenestrations, and its initial vein nodes.
 _Avoid_: Leaf shape (in code), contour, silhouette, final shape
 
 **Starting outline**:
@@ -81,6 +81,10 @@ _Avoid_: Tree pattern
 **Closed venation**:
 A venation pattern in which veins may rejoin (anastomose), forming loops.
 _Avoid_: Network pattern, reticulate (which is a narrower botanical term)
+
+**Anastomosis**:
+A join between two veins that grew toward the same auxin source, closing a loop.
+_Avoid_: Join, connection, merge, loop (a loop is the closed path an anastomosis creates)
 
 **Relative neighbourhood**:
 The set of vein nodes that an auxin source influences in closed venation: nodes close to the source but relatively far from one another.

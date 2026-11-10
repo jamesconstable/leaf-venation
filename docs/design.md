@@ -13,14 +13,17 @@ Decisions agreed during the initial design session (2026-11-10/11). Vocabulary i
 ## Architecture
 
 ```
-ui/          SolidJS components                 → render, share, catalogue
+ui/          SolidJS components                 → render, share, catalogue, worker
 render/      renderer interface, styles, WebGL background → simulation, outline
 share/       URL codec, SVG/PNG export          → simulation, outline
-worker/      thin Web Worker wrapper            → simulation
+worker/      Web Worker and its main-thread client → simulation
 catalogue/   leaf outlines, specimens, styles as data → outline
-outline/     outlines, teeth, fenestrations, star-shapedness
-simulation/  geometry, spatial index, growth, venation, vein width (pure; no DOM)
+outline/     outlines, teeth, fenestrations, star-shapedness → geometry
+simulation/  spatial index, growth, venation, vein width (pure; no DOM) → geometry
+geometry/    points, polygons, regions with holes
 ```
+
+The exact rules are in `eslint.config.js`. ESLint also bans `Math.random`, `Math.hypot` and transcendental functions in `simulation/`, `outline/` and `geometry/`, since they could differ between browsers (ADR 0002).
 
 Dependencies only point downward; a lint rule enforces it. `simulation/` exposes a narrow, pure `step(state) → state` interface.
 
@@ -35,12 +38,17 @@ Dependencies only point downward; a lint rule enforces it. `simulation/` exposes
 - **Deterministic** from (simulation parameters, random seed, model version) (ADR 0002).
 - **Scale**: specimen parameters are stored relative to the final leaf length. **Detail** sets the length in vein segment lengths. A **node budget** (~100k vein nodes) ends a runaway simulation gracefully. Table 1 of the paper is a starting point for tuning, not gospel.
 - **Termination**: a growth phase until the final outline is reached, then a settling phase with no growth, until no auxin sources remain and no darts are accepted for several steps, or no vein node has been added for several steps, or the node budget is hit. A new vein node within a tiny distance of an existing one is rejected and counts as no progress, which stops vein nodes stuttering.
-- **Vein width**: Murray's law with the vein width exponent as a render setting. In closed venation, all child veins entering a node contribute equally.
+- **Deviations from the paper**. The first two apply only where the paper's rules make no progress; the third fills a gap in the paper:
+  - When a node's sources nearly cancel (on opposite sides of it), the averaged step points sideways onto an earlier node. In that case only, the node grows one vein toward each source separately.
+  - In closed venation, a tagged vein node that cannot grow (blocked by a node that already reached the source) is released, as if it had left the source's zone of influence.
+  - **Anastomoses**: the paper says when loops form but not how meeting veins connect. When a closed-venation source is removed, every vein node that arrived at it is joined to the one closest to the source. "Arrived" covers nodes that came within the kill distance, tagged nodes blocked just short, and tagged nodes excluded from the source's neighbourhood by a vein that just arrived (rather than turning away). Joins are skipped between adjacent nodes and when longer than twice the kill distance plus one vein segment length on each side. The vein graph is a tree plus a list of anastomoses.
+- **Kill distance** for closed venation defaults to the minimum, one vein segment length, as in every closed pattern in the paper; with a large kill distance closed venation looks just like open.
+- **Vein width**: Murray's law with the vein width exponent as a render setting, computed on the growth tree. An anastomosis is drawn as a continuation of the finer of the two veins it joins.
 - **Vein order**: the widest child continues its parent's order; the others take the next order. For closed venation it is computed on the growth tree.
 
 ## Leaf outlines and growth
 
-- A leaf outline is a closed cubic Bézier margin path in normalised coordinates (base at the origin, tip along +y, length 1), plus zero or more **fenestration** paths, its initial vein nodes and a *symmetric* flag.
+- A leaf outline is a closed cubic Bézier margin path in normalised coordinates (base at the origin, tip along +y, length 1), plus zero or more **fenestration** paths, its initial vein nodes and a _symmetric_ flag.
 - **Margin teeth** are procedural (summed triangular waveforms), applied to the final outline.
 - The leaf outline is the **final** shape; the starting outline is derived by inverting the growth (ADR 0003). A faint ghost of the final outline is shown during growth.
 - **Marginal growth** is only offered for outlines that are star-shaped from the base, checked automatically. Lobed and fenestrated outlines can still use isogonic or anisotropic growth.
@@ -52,7 +60,7 @@ Dependencies only point downward; a lint rule enforces it. `simulation/` exposes
 - **Simulation parameters** restart the simulation, debounced to the end of a slider drag.
 - **Render settings** (style, overlays, vein width exponent) re-render without restarting.
 - **Playback** (speed, pause, scrub) never restarts.
-- A **specimen** holds only leaf-defining simulation parameters. Random seed, detail and style sit outside it. A specimen may *suggest* a style, applied only when it is picked fresh. Changing any specimen parameter deselects the specimen and the leaf becomes **custom**.
+- A **specimen** holds only leaf-defining simulation parameters. Random seed, detail and style sit outside it. A specimen may _suggest_ a style, applied only when it is picked fresh. Changing any specimen parameter deselects the specimen and the leaf becomes **custom**.
 - The UI explains the random seed with a line of help text, since "seed" is otherwise ambiguous in a plant app.
 - **First visit**: a random pick from a curated list of specimen and style pairings, already growing.
 
