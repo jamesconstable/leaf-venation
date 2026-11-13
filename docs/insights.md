@@ -74,6 +74,18 @@ The plan assumed animated bokeh would need WebGL shaders. Instead, each layer of
 
 The stippled shading in the botanical ink style tested each candidate dot with `context.isPointInPath(blade, x, y)` and drew nothing at all. The path is interpreted through the context's current transform (scaled by the device pixel ratio on a high-density display), but the point is not: it's in raw canvas pixels. On a 2× display every test missed. Testing against our own polygon in the same coordinates fixed it, and is independent of the display.
 
+### Blurring a thin line dilutes it to nothing
+
+The soft shadows beside veins were first drawn as the blurred shadow of each vein's own shape, and were all but invisible: blurring spreads a line one or two pixels wide over many more, so its peak darkness collapses. The fix was to blur a shape several times wider than the vein, and to lay the shadow down twice. The same applies to any glow or halo built from a canvas shadow.
+
+### Two coordinate systems, one type
+
+The style swatches drew stray straight lines across their miniature leaves. They had been given the blade at leaf length 1, while vein positions are in simulation units, 200 times larger, so nearly every vein was drawn far off the swatch and the midvein appeared as a long line. Both values had the type `Region`. A _branded_ type for each coordinate system (normalised, simulation and screen) would have turned this into a compile error; a candidate for later.
+
+### Foil catches one light
+
+Metallic foil looked like a plain diagonal gradient until three things changed: narrow, sharp highlight bands against darker metal instead of a smooth ramp; a fine, crinkled grain varying in brightness (an earlier grain varied only in transparency over mid-grey, which a soft-light blend leaves unchanged); and one pattern of bands pinned to the window (`background-attachment: fixed`) and shared by every foiled element, shifted as the pointer moves. Each pill then shows a different part of the same light, as real foil would.
+
 ### A reactive framework can reset an input before you read it
 
 Our slider kept a "draft" value while dragging. On release, the handler cleared the draft and then read the input's value. But clearing the draft made SolidJS synchronously re-render the input with the old value, so every slider silently ignored the user. The unit tests didn't cover the UI; a browser check found it within minutes.
