@@ -12,7 +12,14 @@ export class SnapshotAccumulator {
   private parents = new Int32Array(1024);
   private count = 0;
 
+  /**
+   * Starts afresh with new arrays, rather than overwriting the old ones, so
+   * snapshots already handed out stay intact.
+   */
   reset(): void {
+    this.xs = new Float64Array(1024);
+    this.ys = new Float64Array(1024);
+    this.parents = new Int32Array(1024);
     this.count = 0;
   }
 
