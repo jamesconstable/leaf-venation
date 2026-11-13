@@ -18,6 +18,8 @@ export interface Frame {
 const FINEST_WIDTH = 0.6;
 const WIDEST_FRACTION = 0.016;
 const SAMPLES_PER_SEGMENT = 3;
+/** The petiole's length as a fraction of the leaf's; the leaf is framed with room for it. */
+const PETIOLE_LENGTH = 0.13;
 
 const toScreen = (polygon: Polygon, view: View, scale: number): Polygon =>
   polygon.map(({ x, y }) => ({ x: toScreenX(view, x * scale), y: toScreenY(view, y * scale) }));
@@ -33,9 +35,13 @@ export const prepareLeaf = (
   frame: Frame,
   veinWidthExponent: number,
 ): PreparedLeaf => {
-  const view = frameView(blade.bounds, frame);
+  const leafHeight = blade.bounds.maxY - blade.bounds.minY;
+  const view = frameView(
+    { ...blade.bounds, minY: Math.min(blade.bounds.minY, -1.08 * PETIOLE_LENGTH * leafHeight) },
+    frame,
+  );
   const bladeScale = snapshot?.bladeScale ?? 1;
-  const leafLength = (blade.bounds.maxY - blade.bounds.minY) * view.scale * bladeScale;
+  const leafLength = leafHeight * view.scale * bladeScale;
   const base = { x: toScreenX(view, 0), y: toScreenY(view, 0) };
   const outline = {
     view,
@@ -47,7 +53,9 @@ export const prepareLeaf = (
     leafLength,
     base,
   };
-  if (snapshot === undefined) return { ...outline, veins: [] };
+  if (snapshot === undefined) {
+    return { ...outline, veins: [], petiole: petiole(base, leafLength, FINEST_WIDTH / 2) };
+  }
 
   const { xs, ys, parents, veinScale } = snapshot;
   const widths = veinWidths(parents, veinWidthExponent);
@@ -97,5 +105,31 @@ export const prepareLeaf = (
     veins.push(prepare([a, b], order, () => width));
   }
   veins.sort((p, q) => p.halfWidth - q.halfWidth);
-  return { ...outline, veins };
+  const midvein = veins.reduce(
+    (widest, vein) => Math.max(widest, vein.halfWidth),
+    FINEST_WIDTH / 2,
+  );
+  return { ...outline, veins, petiole: petiole(base, leafLength, midvein) };
 };
+
+/**
+ * The leaf stalk: a gentle curve down from the base, continuing the midvein and
+ * tapering slightly before a small swelling where it would join the stem. It
+ * starts a little inside the blade, so it overlaps the midvein and the margin
+ * rather than butting against them.
+ */
+const petiole = (
+  base: { x: number; y: number },
+  leafLength: number,
+  halfWidth: number,
+): RibbonPoint[] =>
+  Array.from({ length: 15 }, (_, k) => {
+    const t = -0.15 + (1.15 * k) / 14;
+    const below = Math.max(0, t);
+    const swelling = t > 0.85 ? 1 + 2.2 * (t - 0.85) : 1;
+    return {
+      x: base.x + 0.035 * leafLength * below * below,
+      y: base.y + PETIOLE_LENGTH * leafLength * t,
+      halfWidth: Math.max(0.5, halfWidth * (1.05 - 0.3 * below) * swelling),
+    };
+  });

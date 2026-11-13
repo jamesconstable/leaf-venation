@@ -76,7 +76,7 @@ export const paintPaper = (
   const vignette = context.createRadialGradient(
     width / 2,
     height / 2,
-    Math.min(width, height) * 0.35,
+    Math.min(width, height) * 0.25,
     width / 2,
     height / 2,
     Math.hypot(width, height) * 0.6,
@@ -91,20 +91,226 @@ export const paintPaper = (
  * Bokeh layers from far to near. Each is painted at a fraction of the screen's
  * resolution and blurred there (by `blur` pixels at that resolution); the
  * browser then scales it up, softening it further. Farther layers are blurrier.
- * The last layer holds only the bright discs of out-of-focus highlights, sharper
- * than the foliage, and is blended onto the others with "screen".
  */
 export const BOKEH_LAYERS = [
-  { resolution: 1 / 10, blur: 5, leaves: 7, lights: 6, seed: 1 },
-  { resolution: 1 / 7, blur: 4, leaves: 9, lights: 4, seed: 2 },
-  { resolution: 1 / 5, blur: 3, leaves: 6, lights: 0, seed: 3 },
-  { resolution: 1 / 3, blur: 1, leaves: 0, lights: 26, seed: 4 },
+  { resolution: 1 / 10, blur: 6, seed: 1 }, // atmosphere: light, shade and soft masses
+  { resolution: 1 / 7, blur: 3, seed: 2 }, // branches of small leaves
+  { resolution: 1 / 5, blur: 4, seed: 3 }, // large leaves framing the edges
+  { resolution: 1 / 3, blur: 1, seed: 4 }, // highlights, blended with "screen"
 ] as const;
 
+/** Where the light comes from, as a fraction of the layer's width and height. */
+const SOURCE = { x: 0.56, y: 0.1 };
+
+type Next = () => number;
+
+/** A normally distributed number, for clustering marks around a point. */
+const gaussian = (next: Next) =>
+  Math.sqrt(-2 * Math.log(Math.max(1e-9, next()))) * Math.cos(2 * Math.PI * next());
+
+const fillLeafShape = (
+  context: CanvasRenderingContext2D,
+  outline: Polygon,
+  cx: number,
+  cy: number,
+  scale: number,
+  angle: number,
+) => {
+  const [cos, sin] = [Math.cos(angle), Math.sin(angle)];
+  context.beginPath();
+  outline.forEach(({ x, y }, i) => {
+    // Centre the leaf on its middle rather than its base before rotating.
+    const [lx, ly] = [x * scale, (y - 0.5) * scale];
+    const [px, py] = [cx + lx * cos - ly * sin, cy + lx * sin + ly * cos];
+    if (i === 0) context.moveTo(px, py);
+    else context.lineTo(px, py);
+  });
+  context.fill();
+};
+
+const pick = <T>(items: readonly T[], next: Next, fallback: T): T =>
+  items[Math.floor(next() * items.length)] ?? fallback;
+
+/** Light from the top centre, cool shade to the lower left, deep shade at the bottom and edges. */
+const paintAtmosphere = (
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  backdrop: BokehBackdrop,
+  outline: Polygon,
+  next: Next,
+) => {
+  const size = Math.max(width, height);
+  context.fillStyle = backdrop.mid;
+  context.fillRect(0, 0, width, height);
+  const radial = (x: number, y: number, radius: number, colour: string, alpha: number) => {
+    const gradient = context.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(0, colour);
+    gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+    context.globalAlpha = alpha;
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, width, height);
+    context.globalAlpha = 1;
+  };
+  radial(0.06 * width, 0.95 * height, 0.7 * size, backdrop.cool, 0.85);
+  // Soft masses of distant foliage, mostly toward the bottom and sides.
+  for (let n = 0; n < 9; n++) {
+    const side = next() < 0.5 ? next() * 0.25 : 0.75 + next() * 0.25;
+    context.fillStyle = pick(backdrop.foliage.slice(0, 3), next, backdrop.deep);
+    context.globalAlpha = 0.5 + next() * 0.4;
+    fillLeafShape(
+      context,
+      outline,
+      side * width,
+      (0.35 + next() * 0.75) * height,
+      size * (0.35 + next() * 0.4),
+      next() * Math.PI * 2,
+    );
+  }
+  context.globalAlpha = 1;
+  radial(SOURCE.x * width, SOURCE.y * height, 0.8 * size, backdrop.bright, 0.9);
+  // Soft, dim discs of light filtering through, thickest near the source.
+  for (let n = 0; n < 40; n++) {
+    const x = (SOURCE.x + 0.28 * gaussian(next)) * width;
+    const y = (SOURCE.y + 0.3 * Math.abs(gaussian(next))) * height;
+    radial(x, y, size * (0.03 + next() * 0.06), pick(backdrop.lights, next, "white"), 0.25);
+  }
+  const shade = context.createLinearGradient(0, 0.45 * height, 0, height);
+  shade.addColorStop(0, "rgba(0, 0, 0, 0)");
+  shade.addColorStop(1, backdrop.deep);
+  context.globalAlpha = 0.75;
+  context.fillStyle = shade;
+  context.fillRect(0, 0, width, height);
+  const vignette = context.createRadialGradient(
+    width / 2,
+    height * 0.4,
+    size * 0.35,
+    width / 2,
+    height * 0.4,
+    size * 0.8,
+  );
+  vignette.addColorStop(0, "rgba(0, 0, 0, 0)");
+  vignette.addColorStop(1, backdrop.deep);
+  context.fillStyle = vignette;
+  context.fillRect(0, 0, width, height);
+  context.globalAlpha = 1;
+};
+
+/** Curving branches hanging from the top, set with small leaves; brighter where the light falls. */
+const paintBranches = (
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  backdrop: BokehBackdrop,
+  outline: Polygon,
+  next: Next,
+) => {
+  const size = Math.max(width, height);
+  for (let branch = 0; branch < 5; branch++) {
+    let x = (-0.1 + next() * 1.2) * width;
+    let y = -0.05 * height;
+    let angle = Math.PI / 2 + (next() - 0.5) * 1.6;
+    const steps = 14 + Math.floor(next() * 14);
+    for (let step = 0; step < steps; step++) {
+      angle += (next() - 0.5) * 0.5;
+      x += Math.cos(angle) * size * 0.03;
+      y += Math.sin(angle) * size * 0.03;
+      for (const sideways of [-1, 1]) {
+        if (next() < 0.25) continue;
+        const reach = size * (0.015 + next() * 0.02);
+        const leafX = x + Math.cos(angle + sideways * 1.1) * reach;
+        const leafY = y + Math.sin(angle + sideways * 1.1) * reach;
+        const lit = Math.max(
+          0,
+          1 - Math.hypot(leafX / width - SOURCE.x, (leafY / height - SOURCE.y) * 1.3) / 0.75,
+        );
+        const shade = Math.min(
+          backdrop.foliage.length - 1,
+          Math.floor(lit * backdrop.foliage.length + next() * 1.5),
+        );
+        context.fillStyle = backdrop.foliage[shade] ?? backdrop.mid;
+        context.globalAlpha = 0.55 + 0.4 * next();
+        fillLeafShape(
+          context,
+          outline,
+          leafX,
+          leafY,
+          size * (0.03 + next() * 0.035),
+          angle + sideways * (0.6 + next() * 0.6),
+        );
+      }
+    }
+  }
+  context.globalAlpha = 1;
+};
+
+/** A few large, dark leaves at the edges, close to the lens. */
+const paintFraming = (
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  backdrop: BokehBackdrop,
+  outline: Polygon,
+  next: Next,
+) => {
+  const size = Math.max(width, height);
+  const spots = [
+    [1.02, 0.85],
+    [-0.04, 0.6],
+    [0.85, 1.08],
+    [0.12, 1.05],
+  ] as const;
+  for (const [fx, fy] of spots) {
+    context.fillStyle = pick(backdrop.foliage.slice(0, 2), next, backdrop.deep);
+    context.globalAlpha = 0.75 + next() * 0.2;
+    fillLeafShape(
+      context,
+      outline,
+      (fx + (next() - 0.5) * 0.1) * width,
+      (fy + (next() - 0.5) * 0.1) * height,
+      size * (0.22 + next() * 0.12),
+      next() * Math.PI * 2,
+    );
+  }
+  context.globalAlpha = 1;
+};
+
+/** Bright discs of out-of-focus highlights, clustered toward the light. */
+const paintHighlights = (
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  backdrop: BokehBackdrop,
+  next: Next,
+) => {
+  const size = Math.max(width, height);
+  for (let n = 0; n < 70; n++) {
+    const clustered = next() < 0.75;
+    const fx = clustered ? SOURCE.x + 0.24 * gaussian(next) : next();
+    const fy = clustered ? SOURCE.y + 0.28 * Math.abs(gaussian(next)) : next();
+    const nearness = Math.max(0, 1 - Math.hypot(fx - SOURCE.x, fy - SOURCE.y) / 0.9);
+    const [x, y] = [fx * width, fy * height];
+    const r = size * (0.006 + next() * 0.026);
+    const colour = pick(backdrop.lights, next, "white");
+    // A bokeh disc: an even plateau of light with a slightly brighter rim and a soft edge.
+    const disc = context.createRadialGradient(x, y, 0, x, y, r);
+    disc.addColorStop(0, colour);
+    disc.addColorStop(0.8, colour);
+    disc.addColorStop(0.9, "white");
+    disc.addColorStop(1, "rgba(255, 255, 255, 0)");
+    context.globalAlpha = (0.12 + 0.5 * next()) * (0.25 + 0.75 * nearness);
+    context.fillStyle = disc;
+    context.beginPath();
+    context.arc(x, y, r, 0, Math.PI * 2);
+    context.fill();
+  }
+  context.globalAlpha = 1;
+};
+
 /**
- * One layer of out-of-focus foliage: leaf silhouettes like the one being grown,
- * with light breaking through between them. The layer is painted small and
- * scaled up by the browser, which blurs it softly.
+ * One layer of out-of-focus foliage behind the leaf, with silhouettes like the
+ * leaf being grown. The layer is painted small, blurred, and scaled up by the
+ * browser, which softens it further.
  */
 export const paintBokehLayer = (
   context: CanvasRenderingContext2D,
@@ -118,59 +324,19 @@ export const paintBokehLayer = (
   if (settings === undefined) return;
   const next = scatter(settings.seed * 31);
   context.clearRect(0, 0, width, height);
-  if (layer === 0) {
-    const sky = context.createLinearGradient(0, 0, width, height);
-    sky.addColorStop(0, backdrop.sky);
-    sky.addColorStop(0.55, backdrop.foliage[2] ?? backdrop.sky);
-    sky.addColorStop(1, backdrop.foliage[0] ?? backdrop.sky);
-    context.fillStyle = sky;
-    context.fillRect(0, 0, width, height);
+  switch (layer) {
+    case 0:
+      paintAtmosphere(context, width, height, backdrop, outline, next);
+      break;
+    case 1:
+      paintBranches(context, width, height, backdrop, outline, next);
+      break;
+    case 2:
+      paintFraming(context, width, height, backdrop, outline, next);
+      break;
+    default:
+      paintHighlights(context, width, height, backdrop, next);
   }
-
-  const size = Math.max(width, height);
-  const lights = () => {
-    for (let n = 0; n < settings.lights; n++) {
-      const x = next() * width;
-      const y = next() * height;
-      const r = size * (0.012 + next() * 0.035);
-      // A bokeh disc: an even plateau of light with a slightly brighter rim and a soft edge.
-      const glow = context.createRadialGradient(x, y, 0, x, y, r);
-      glow.addColorStop(0, backdrop.light);
-      glow.addColorStop(0.8, backdrop.light);
-      glow.addColorStop(0.9, "white");
-      glow.addColorStop(1, "rgba(255, 255, 255, 0)");
-      context.globalAlpha = 0.18 + next() * 0.4;
-      context.fillStyle = glow;
-      context.beginPath();
-      context.arc(x, y, r, 0, Math.PI * 2);
-      context.fill();
-    }
-    context.globalAlpha = 1;
-  };
-
-  if (layer === 0) lights();
-  for (let n = 0; n < settings.leaves; n++) {
-    const scale = size * (0.25 + next() * 0.35);
-    const angle = next() * Math.PI * 2;
-    const cx = next() * width;
-    const cy = next() * height;
-    const [cos, sin] = [Math.cos(angle), Math.sin(angle)];
-    context.fillStyle =
-      backdrop.foliage[Math.floor(next() * backdrop.foliage.length)] ?? backdrop.sky;
-    context.globalAlpha = 0.55 + next() * 0.4;
-    context.beginPath();
-    outline.forEach(({ x, y }, i) => {
-      // Centre the leaf on its middle rather than its base before rotating.
-      const [lx, ly] = [x * scale, (y - 0.5) * scale];
-      const [px, py] = [cx + lx * cos - ly * sin, cy + lx * sin + ly * cos];
-      if (i === 0) context.moveTo(px, py);
-      else context.lineTo(px, py);
-    });
-    context.fill();
-  }
-  context.globalAlpha = 1;
-  if (layer > 0) lights();
-
   const image = context.getImageData(0, 0, width, height);
   boxBlur(image.data, width, height, settings.blur);
   context.putImageData(image, 0, 0);

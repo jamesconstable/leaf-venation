@@ -4,15 +4,14 @@ import type { View } from "./view";
 
 /** Colours a style lends the interface, applied as CSS custom properties. */
 export interface StyleTheme {
-  /** The colour of selected options, lit from behind. */
+  /** Selected options, foil-stamped in this colour. */
   readonly accent: string;
-  /** Soft light that selected options cast on their surroundings. */
-  readonly accentGlow: string;
   /** Text on an accent background. */
   readonly onAccent: string;
-  /** The glass panel's tint. */
-  readonly panelTint: string;
-  readonly panelBorder: string;
+  /** The card stock the options panel is made of. */
+  readonly card: string;
+  /** The card's edges and embossed rules. */
+  readonly cardEdge: string;
   readonly text: string;
   readonly muted: string;
   /** A flat colour behind everything, shown before the backdrop is ready. */
@@ -23,10 +22,17 @@ export interface StyleTheme {
 export type Backdrop =
   | {
       readonly kind: "bokeh";
+      /** Shade toward the bottom and edges. */
+      readonly deep: string;
+      readonly mid: string;
+      /** Warm light falling from the top centre. */
+      readonly bright: string;
+      /** Cooler shade toward the lower left. */
+      readonly cool: string;
       /** Out-of-focus foliage, from shadow to highlight. */
       readonly foliage: readonly string[];
-      readonly light: string;
-      readonly sky: string;
+      /** Bokeh highlights. */
+      readonly lights: readonly string[];
     }
   | {
       readonly kind: "paper";
@@ -61,6 +67,8 @@ export interface PreparedLeaf {
   readonly veins: readonly PreparedVein[];
   /** The current leaf's length, in pixels. */
   readonly leafLength: number;
+  /** The leaf stalk's centre line below the base, in screen coordinates. */
+  readonly petiole: readonly RibbonPoint[];
   /** The leaf's base, in screen coordinates. */
   readonly base: { readonly x: number; readonly y: number };
 }

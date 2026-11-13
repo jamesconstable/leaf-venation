@@ -11,8 +11,15 @@ import { SimulationClient } from "../worker/simulationClient";
 import { Backdrop } from "./Backdrop";
 import { Choice, Section, Slider, Toggle } from "./controls";
 import { LeafCanvas } from "./LeafCanvas";
+import { StyleSwatches } from "./StyleSwatches";
 
 const newRandomSeed = () => Math.random().toString(36).slice(2, 8);
+
+const growthNames = {
+  none: "no growth",
+  marginal: "marginal growth",
+  isogonic: "isogonic growth",
+} as const;
 
 const statusLabels = {
   growing: "Growing…",
@@ -122,10 +129,46 @@ export const App = () => {
             veinWidthExponent: veinWidthExponent(),
           }}
         />
+        <p class="caption" aria-live="polite">
+          <span>
+            <span class="caption-title">
+              {leafOutlines.find(({ id }) => id === outlineId())?.name}
+            </span>
+            {` · ${venation()} venation · ${growthNames[growthType()]}`}
+          </span>
+          <span class="caption-status">
+            {snapshot() === undefined
+              ? "Starting…"
+              : `${statusLabels[snapshot()?.status ?? "growing"]} Step ${snapshot()?.stepCount ?? 0}, ${(snapshot()?.xs.length ?? 0).toLocaleString()} vein nodes`}
+          </span>
+        </p>
       </main>
 
-      <aside class="panel">
+      <aside
+        class="panel"
+        onPointerMove={(event) => {
+          // Foil catches the light as the pointer moves across the panel.
+          const bounds = event.currentTarget.getBoundingClientRect();
+          const across = (event.clientX - bounds.left) / bounds.width;
+          const down = (event.clientY - bounds.top) / bounds.height;
+          event.currentTarget.style.setProperty(
+            "--sheen",
+            `${Math.round(160 * across + 60 * down)}px`,
+          );
+        }}
+      >
         <h1>Leaf Venation</h1>
+
+        <Section title="Style">
+          <StyleSwatches
+            styles={styles}
+            selected={style()}
+            blade={config()?.blade}
+            snapshot={snapshot()}
+            veinWidthExponent={veinWidthExponent()}
+            onSelect={setStyle}
+          />
+        </Section>
 
         <Section title="Leaf">
           <Choice
@@ -198,7 +241,7 @@ export const App = () => {
           </Show>
         </Section>
 
-        <Section title="Simulation">
+        <Section title="Simulation" open={false}>
           <Slider
             label="Kill distance"
             value={killDistance()}
@@ -260,20 +303,7 @@ export const App = () => {
           </div>
         </Section>
 
-        <Section title="Style">
-          <Choice
-            label="Style"
-            value={style().id}
-            options={styles.map(({ id, name, description }) => ({
-              value: id,
-              label: name,
-              title: description,
-            }))}
-            onChange={(id) => setStyle(styles.find((candidate) => candidate.id === id) ?? style())}
-          />
-        </Section>
-
-        <Section title="Display">
+        <Section title="Display" open={false}>
           <Toggle
             label="Auxin sources"
             checked={overlays().auxinSources}
@@ -319,12 +349,6 @@ export const App = () => {
             </button>
           </div>
         </Section>
-
-        <p class="status" aria-live="polite">
-          {snapshot() === undefined
-            ? "Starting…"
-            : `${statusLabels[snapshot()?.status ?? "growing"]} Step ${snapshot()?.stepCount ?? 0}, ${snapshot()?.xs.length ?? 0} vein nodes`}
-        </p>
       </aside>
     </div>
   );
@@ -335,10 +359,9 @@ const emptyBounds = { minX: 0, minY: 0, maxX: 1, maxY: 1 };
 /** The style's theme, as CSS custom properties for the interface. */
 const themeVariables = ({ theme }: Style) => ({
   "--accent": theme.accent,
-  "--accent-glow": theme.accentGlow,
   "--on-accent": theme.onAccent,
-  "--panel-tint": theme.panelTint,
-  "--panel-border": theme.panelBorder,
+  "--card": theme.card,
+  "--card-edge": theme.cardEdge,
   "--text": theme.text,
   "--muted": theme.muted,
   "--stage": theme.stage,

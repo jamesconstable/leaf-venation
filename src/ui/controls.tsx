@@ -3,11 +3,12 @@ import { createSignal, For, type JSX } from "solid-js";
 let nextId = 0;
 const uniqueId = (prefix: string) => `${prefix}-${nextId++}`;
 
-export const Section = (props: { title: string; children: JSX.Element }) => (
-  <section class="section">
-    <h2>{props.title}</h2>
-    {props.children}
-  </section>
+/** A collapsible group of controls. */
+export const Section = (props: { title: string; open?: boolean; children: JSX.Element }) => (
+  <details class="section" open={props.open ?? true}>
+    <summary>{props.title}</summary>
+    <div class="section-body">{props.children}</div>
+  </details>
 );
 
 /**

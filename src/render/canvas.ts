@@ -43,3 +43,49 @@ export const makeTexture = (
   if (context !== null) paint(context, width, height);
   return canvas;
 };
+
+/** A repeating pattern pinned to a point (e.g. the leaf's base), so it doesn't slide as the leaf changes. */
+export const pinnedPattern = (
+  context: CanvasRenderingContext2D,
+  texture: HTMLCanvasElement,
+  anchor: { readonly x: number; readonly y: number },
+  scale: number,
+): CanvasPattern | null => {
+  const pattern = context.createPattern(texture, "repeat");
+  pattern?.setTransform(new DOMMatrix().translate(anchor.x, anchor.y).scale(scale));
+  return pattern;
+};
+
+/**
+ * Fills only the blurred shadow of a path, not the path itself: the path is
+ * drawn far off the canvas, and its shadow offset back into place. Shadow
+ * offsets and blur ignore the canvas transform, so they are scaled by hand.
+ */
+export const fillShadowOnly = (
+  context: CanvasRenderingContext2D,
+  path: Path2D,
+  colour: string,
+  blur: number,
+  rule: CanvasFillRule = "nonzero",
+): void => {
+  const away = 100_000;
+  const scale = context.getTransform().a;
+  context.save();
+  context.shadowColor = colour;
+  context.shadowBlur = blur * scale;
+  context.shadowOffsetX = away * scale;
+  context.translate(-away, 0);
+  context.fillStyle = "black";
+  context.fill(path, rule);
+  context.restore();
+};
+
+/** As `fillShadowOnly`, filling by the even-odd rule, e.g. for a shape with a hole. */
+export const fillShadowOnlyEvenOdd = (
+  context: CanvasRenderingContext2D,
+  path: Path2D,
+  colour: string,
+  blur: number,
+): void => {
+  fillShadowOnly(context, path, colour, blur, "evenodd");
+};

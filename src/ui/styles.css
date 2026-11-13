@@ -92,48 +92,159 @@ body {
   height: 100%;
 }
 
-/* The glass panel. Flatter and more opaque than glassy, with very little distortion. */
+/*
+ * The options panel is a stack of good card stock, like an expensive menu or
+ * business card: a fine paper texture, sheets layered beneath, letterpress
+ * headings, embossed rules between sections, and selections foil-stamped in
+ * the style's accent colour.
+ */
 .panel {
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  --emboss-light: rgba(255, 255, 255, 0.75);
+  --deboss: color-mix(in srgb, var(--text) 16%, transparent);
+  /*
+   * Metallic leaf: narrow, bright specular bands against darker metal, over a
+   * fine crinkled grain, with the sheen shifting as the pointer moves (--sheen,
+   * set from App.tsx) as if the light were catching it.
+   */
+  --foil-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2.2 0.6' numOctaves='2' seed='4' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0.7 0 0 0 0.15 0.7 0 0 0 0.15 0.7 0 0 0 0.15 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
+  --foil-dark: color-mix(in oklab, var(--accent) 58%, black);
+  --foil-light: color-mix(in oklab, var(--accent) 45%, white);
+  --foil-glint: color-mix(in oklab, var(--accent) 10%, white);
+  /* Bands repeat every 220px across the window, so all the foil shares one light. */
+  --foil:
+    var(--foil-grain),
+    repeating-linear-gradient(
+      105deg,
+      var(--foil-dark) 0px,
+      var(--accent) 34px,
+      var(--foil-light) 56px,
+      var(--foil-glint) 61px,
+      var(--foil-light) 66px,
+      var(--accent) 84px,
+      var(--foil-dark) 118px,
+      var(--accent) 150px,
+      var(--foil-light) 168px,
+      var(--foil-glint) 171px,
+      var(--foil-light) 174px,
+      var(--accent) 190px,
+      var(--foil-dark) 220px
+    );
+
   position: fixed;
-  top: 16px;
-  left: 16px;
-  bottom: 16px;
-  width: 320px;
+  top: 18px;
+  left: 18px;
+  bottom: 22px;
+  width: 316px;
   overflow-y: auto;
-  padding: 22px 20px;
-  border: 1px solid var(--panel-border);
-  border-radius: 20px;
-  background: var(--panel-tint);
-  backdrop-filter: blur(22px) saturate(1.35);
-  -webkit-backdrop-filter: blur(22px) saturate(1.35);
+  padding: 20px 20px 12px;
+  border-radius: 5px;
+  background-color: var(--card);
+  background-image: var(--grain);
+  /* Sheets of card stacked beneath, each slightly offset, then a soft drop shadow. */
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.5) inset,
-    0 18px 50px rgba(0, 0, 0, 0.18);
+    inset 0 1px 0 var(--emboss-light),
+    0 1px 1px rgba(0, 0, 0, 0.14),
+    0 3px 0 -1px var(--card),
+    0 3px 1px -1px rgba(0, 0, 0, 0.16),
+    0 6px 0 -2px var(--card),
+    0 6px 2px -2px rgba(0, 0, 0, 0.14),
+    0 18px 38px rgba(0, 0, 0, 0.3);
   scrollbar-width: thin;
-  transition:
-    background-color 0.6s ease,
-    border-color 0.6s ease;
+  scrollbar-color: var(--deboss) transparent;
+  transition: background-color 0.5s ease;
 }
 
+/* Every foiled surface shares the moving sheen. */
+.panel h1,
+.choice-option input:checked + span,
+.panel input[type="range"]::-webkit-slider-thumb {
+  background: var(--foil);
+  background-size:
+    90px 90px,
+    auto;
+  background-position:
+    0 0,
+    var(--sheen, 0px) 0;
+  background-attachment: scroll, fixed;
+  background-blend-mode: overlay, normal;
+}
+
+.panel input[type="range"]::-moz-range-thumb {
+  background: var(--foil);
+  background-size:
+    90px 90px,
+    auto;
+  background-position:
+    0 0,
+    var(--sheen, 0px) 0;
+  background-attachment: scroll, fixed;
+  background-blend-mode: overlay, normal;
+}
+
+/* The title, stamped in foil. */
 .panel h1 {
-  margin: 0 0 18px;
+  margin: 0 0 14px;
   font-family: "EB Garamond", Georgia, serif;
-  font-size: 1.9rem;
+  font-size: 1.95rem;
   font-weight: 500;
   letter-spacing: 0.01em;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  /* Foil on a light card: keep the highlights coloured so the letters never vanish. */
+  --foil-light: color-mix(in oklab, var(--accent) 80%, white);
+  --foil-glint: color-mix(in oklab, var(--accent) 60%, white);
+  filter: drop-shadow(0 -0.5px 0 rgba(0, 0, 0, 0.28)) drop-shadow(0 1px 0 var(--emboss-light));
 }
 
+/* Sections are separated by an embossed rule: a dark line with a light line beneath. */
 .section {
-  margin-bottom: 22px;
+  border-top: 1px solid var(--card-edge);
+  box-shadow: inset 0 1px 0 var(--emboss-light);
 }
 
-.section h2 {
-  margin: 0 0 10px;
+.section summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 0;
+  list-style: none;
+  cursor: pointer;
   font-size: 0.7rem;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
+  /* Letterpress: pressed into the card, so lit from below. */
+  text-shadow: 0 1px 0 var(--emboss-light);
+}
+
+.section summary::-webkit-details-marker {
+  display: none;
+}
+
+.section summary::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.2s ease;
+}
+
+.section[open] summary::after {
+  transform: rotate(45deg);
+}
+
+.section summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.section-body {
+  padding-bottom: 14px;
 }
 
 .field {
@@ -156,9 +267,59 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Sliders: a groove pressed into the card, and a foil-stamped disc. */
 input[type="range"] {
   width: 100%;
-  accent-color: var(--accent);
+  height: 18px;
+  margin: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--deboss);
+  box-shadow:
+    inset 0 1px 1px rgba(0, 0, 0, 0.2),
+    0 1px 0 var(--emboss-light);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--deboss);
+  box-shadow:
+    inset 0 1px 1px rgba(0, 0, 0, 0.2),
+    0 1px 0 var(--emboss-light);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  width: 15px;
+  height: 15px;
+  margin-top: -5.5px;
+  border: 0;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 1px 2px rgba(0, 0, 0, 0.3);
+  -webkit-appearance: none;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border: 0;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+input[type="range"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .choice-options {
@@ -178,49 +339,94 @@ input[type="range"] {
   pointer-events: none;
 }
 
+/* Unselected options are debossed: pressed gently into the card. */
 .choice-option span {
   display: inline-block;
   padding: 5px 12px;
-  border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
   border-radius: 999px;
   font-size: 0.88rem;
-  background: color-mix(in srgb, white 45%, transparent);
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.14),
+    0 1px 0 var(--emboss-light);
   transition:
-    background 0.25s ease,
-    box-shadow 0.25s ease,
-    color 0.25s ease;
+    background 0.2s ease,
+    color 0.2s ease;
 }
 
 .choice-option:hover span {
-  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
-/*
- * A selected option looks lit from behind: brightest at its heart, with a soft
- * halo of the style's colour that spills onto its neighbours.
- */
+/* The selected option is foil-stamped: a metallic sheen, crisply impressed. */
 .choice-option input:checked + span {
-  border-color: color-mix(in srgb, var(--accent) 70%, white);
   color: var(--on-accent);
-  background: radial-gradient(
-    120% 140% at 50% 110%,
-    color-mix(in srgb, var(--accent) 55%, white) 0%,
-    var(--accent) 70%
-  );
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent),
-    0 0 14px 2px var(--accent-glow),
-    0 0 38px 10px color-mix(in srgb, var(--accent-glow) 45%, transparent);
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+    0 1px 0 var(--emboss-light);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.2);
 }
 
 .choice-option input:disabled + span {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
 .choice-option input:focus-visible + span {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Style swatches: little prints mounted on the card. */
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px 8px;
+}
+
+.swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 0.76rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.swatch-picture {
+  display: block;
+  border-radius: 3px;
+  box-shadow:
+    0 0 0 1px var(--card-edge),
+    0 1px 2px rgba(0, 0, 0, 0.18);
+  transition: box-shadow 0.2s ease;
+}
+
+.swatch[aria-checked="true"] .swatch-picture {
+  /* A foil frame around the chosen print. */
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.swatch[aria-checked="true"] .swatch-name {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.swatch:focus-visible {
+  outline: none;
+}
+
+.swatch:focus-visible .swatch-picture {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 1px 2px rgba(0, 0, 0, 0.18);
 }
 
 .toggle {
@@ -242,27 +448,42 @@ input[type="range"] {
   flex: 1;
   min-width: 0;
   padding: 5px 9px;
-  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, white 55%, transparent);
+  border: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.16),
+    0 1px 0 var(--emboss-light);
   color: var(--text);
   font: inherit;
   font-family: ui-monospace, monospace;
 }
 
+/* Buttons are embossed: raised slightly from the card, pressed when clicked. */
 button {
   padding: 5px 13px;
-  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, white 55%, transparent);
+  border: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, white 30%, var(--card));
+  box-shadow:
+    inset 0 1px 0 var(--emboss-light),
+    0 0 0 1px var(--card-edge),
+    0 1px 2px rgba(0, 0, 0, 0.15);
   color: var(--text);
   font: inherit;
   font-size: 0.9rem;
   cursor: pointer;
 }
 
-button:hover {
-  border-color: var(--accent);
+button:active {
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.18),
+    0 0 0 1px var(--card-edge);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .help {
@@ -272,9 +493,42 @@ button:hover {
   color: var(--muted);
 }
 
-.status {
-  font-size: 0.8rem;
+/*
+ * The caption: a slip of vellum below the leaf, like a label on a botanical
+ * plate. Translucent, so the backdrop shows faintly through.
+ */
+.caption {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: 1rem;
+  font-style: italic;
+  color: var(--text);
+}
+
+.caption-title {
+  font-style: normal;
+  font-weight: 500;
+}
+
+.caption-status {
+  font-family: "Inter Variable", system-ui, sans-serif;
+  font-size: 0.75rem;
+  font-style: normal;
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 899px) {
@@ -286,6 +540,12 @@ button:hover {
     position: sticky;
     top: 0;
     height: 62vh;
+  }
+
+  .caption {
+    position: absolute;
+    right: 12px;
+    bottom: 36px;
   }
 
   .panel {
