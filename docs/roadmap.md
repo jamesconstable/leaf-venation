@@ -24,5 +24,5 @@ Each milestone is developed on its own branch with small, logical commits; tests
 - Slower playback than one step per frame (e.g. one step every few frames): isogonic growth is most satisfying to watch at the slowest speed, and performance leaves plenty of headroom.
 - Playwright screenshot tests for styles.
 - Revisit the panel's styling: foil-stamped selections were tried and set aside for flat colour (see insights).
-- Speed up the stippled ink style: it takes about 17 ms a frame on a full-size leaf, against 8 ms for spring green.
+- Speed up the stippled ink style: it takes about 25 ms a frame while a full-size leaf grows (40 fps), against 8 ms for every other style. Painting the tone map at lower resolution, or caching the folds between frames, are candidates.
 - Ink style: the finest veins fade into the brightest parts of the blade. Raising the stipple floor flattened the contrast, and stronger or wider shade beside narrow veins made them look lumpy; still to solve.

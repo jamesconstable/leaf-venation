@@ -94,6 +94,10 @@ Stipple dots are placed on a lattice fixed to the final leaf, so they travel wit
 
 The ink style first shaded the half of the blade beyond the midvein, choosing the midvein afresh each frame as the widest first-order vein. Near the tip, two growing veins took turns being widest, and the shading there flipped between light and dark. It also looked unnatural, like a yin-and-yang symbol. Folding the blade a little along every vein instead (each casting graded shade to one side, reaching further for wider veins), plus slopes of a gentle noise surface fixed to the leaf, gives richer relief with no single choice to flip.
 
+### Hash the pixels to prove a refactor changed nothing
+
+Pulling shared code out of the approved styles risked changing how they look, in ways too subtle to spot by eye. Hashing the canvas's pixels for a fixed random seed before and after each refactor (SHA-256 over `getImageData`) proved the output pixel-identical. It's a cheap stand-in for screenshot tests while those wait in the backlog.
+
 ### Draw texture after shading to keep it visible in the shade
 
 The leaf's cell texture was laid down before the soft shadows beside the veins, which then hid it. Applied after the shadows with an `overlay` blend, the same texture modulates whatever is beneath it, so the cell walls carry on through the shaded bands.

@@ -84,13 +84,13 @@ Dependencies only point downward; a lint rule enforces it. `simulation/` exposes
 - Coloured styles: rich colours, with a bokeh background of similarly shaped leaves (animated where performance allows, with parallax and wind as polish).
 - Drawing styles: papery texture, with pencil or ink strokes (wobble, pressure variation).
 - Veins are smooth curves through the vein nodes, tapering continuously, with clean joins where they branch.
-- **Glass panel**: CSS `backdrop-filter` on a fairly opaque tint, with no refraction. The selected option glows from behind in the style's accent colour, spilling softly onto its neighbours, all driven by per-style CSS variables.
+- **Card stock panel**: a sheet of fine card with a subtle paper texture, embossed rules and letterpress headings; selected options are stamped in the style's accent colour, set by per-style CSS variables. (Glass, and then metallic foil, were tried and set aside.)
 - **Typography**: EB Garamond (names and headings; botanical names in italics) and Inter (controls), self-hosted. Technical study uses a drafting-style font for annotations.
 - Delights in the core plan: trace to base, timeline scrubber, PNG export, keyboard shortcuts with a `?` cheat sheet.
 
 ## Accessibility
 
-Keyboard operable throughout with screen-reader labels; WCAG AA contrast on glass; `prefers-reduced-motion` stops the bokeh animation and makes growth jump in larger steps; overlays use shape and dash as well as colour.
+Keyboard operable throughout with screen-reader labels; WCAG AA contrast on the panel; `prefers-reduced-motion` stops the bokeh animation and makes growth jump in larger steps; overlays use shape and dash as well as colour.
 
 ## Testing
 
