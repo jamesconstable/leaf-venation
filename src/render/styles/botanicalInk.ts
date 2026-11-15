@@ -1,4 +1,4 @@
-import type { Polygon } from "../../geometry/region";
+import { polygonContains, type Polygon } from "../../geometry/region";
 import { drawGhost, fillShadowOnly, polygonPath } from "../canvas";
 import { hash2, valueNoise } from "../noise";
 import { ribbon, traceRibbon, type RibbonPoint } from "../ribbon";
@@ -16,6 +16,9 @@ import { toScreenX, toScreenY } from "../view";
 
 const INK = "#241a14";
 const PAPER = "#f3e9d3";
+
+/** Half the margin's pen width, which the petiole's outline shares. */
+const MARGIN_HALF_WIDTH = 0.8;
 
 /** The direction toward the light, in screen coordinates (upper right). */
 const LIGHT = { x: 0.6, y: -0.8 };
@@ -113,35 +116,53 @@ const bladeTone = (leaf: PreparedLeaf, blade: Path2D) =>
     context.clip(blade, "evenodd");
     const length = leaf.leafLength;
     const { x, y } = leaf.base;
-    // Light falls a little more strongly toward the right of the blade.
+    // A mid tone overall, a little lighter toward the light.
     const light = context.createLinearGradient(x - 0.5 * length, y, x + 0.5 * length, y);
-    light.addColorStop(0, "rgba(0, 0, 0, 0.3)");
-    light.addColorStop(1, "rgba(0, 0, 0, 0.14)");
+    light.addColorStop(0, "rgba(0, 0, 0, 0.42)");
+    light.addColorStop(1, "rgba(0, 0, 0, 0.3)");
     context.fillStyle = light;
     context.fill(blade);
-    // The blade folds slightly along the midvein, so the half facing away from the light is in shade.
-    // Veins are sorted by width, so the last of the first order is the widest.
-    const midvein = leaf.veins.filter((vein) => vein.order <= 1).at(-1)?.centre ?? [];
-    const tip = midvein.at(-1) ?? { x, y: y - length };
-    const shade = new Path2D();
-    shade.moveTo(x, y + length);
-    for (const p of [leaf.base, ...midvein]) shade.lineTo(p.x, p.y);
-    shade.lineTo(tip.x, tip.y - length);
-    shade.lineTo(tip.x - 2 * length, tip.y - length);
-    shade.lineTo(x - 2 * length, y + length);
-    shade.closePath();
-    fillShadowOnly(context, shade, "rgba(0, 0, 0, 0.6)", 0.03 * length);
 
     // Toward the margin the blade curves away from the light.
     const band = new Path2D();
     traceRibbon(band, ribbon(closedLine(leaf.blade, 0.025 * length)));
     fillShadowOnly(context, band, "rgba(0, 0, 0, 0.55)", 0.04 * length);
 
-    // Veins stand proud: shade beside each on the side away from the light, light on the other.
-    for (const { group, halfWidth } of groupByWidth(leaf.veins, 5)) {
+    const widest = leaf.veins.reduce((max, v) => Math.max(max, v.halfWidth), 0.3);
+    for (const { group, halfWidth } of groupByWidth(leaf.veins, 6)) {
       if (group.length === 0) continue;
       const path = new Path2D();
       for (const vein of group) traceRibbon(path, ribbon(vein.centre));
+      // The blade folds gently along each vein, more broadly along wider ones: shade
+      // spreads from the vein across the side away from the light, fading with
+      // distance, and light across the other. Smearing the shadow over several
+      // offsets gives a graded fold rather than a displaced copy of the veins.
+      const fold = 0.09 * length * (halfWidth / widest);
+      if (fold > 3) {
+        for (let k = 1; k <= 4; k++) {
+          const reach = (fold * k) / 4;
+          const blur = 2 + 0.5 * reach;
+          fillShadowAt(
+            context,
+            path,
+            "rgba(0, 0, 0, 0.13)",
+            blur,
+            -LIGHT.x * reach,
+            -LIGHT.y * reach,
+          );
+          context.globalCompositeOperation = "destination-out";
+          fillShadowAt(
+            context,
+            path,
+            "rgba(0, 0, 0, 0.15)",
+            blur,
+            LIGHT.x * reach,
+            LIGHT.y * reach,
+          );
+          context.globalCompositeOperation = "source-over";
+        }
+      }
+      // Veins stand proud: crisp shade beside each on the side away from the light, light on the other.
       const reach = 1.4 + 2 * halfWidth;
       const blur = 1.5 + 2.5 * halfWidth;
       fillShadowAt(context, path, "rgba(0, 0, 0, 1)", blur, -LIGHT.x * reach, -LIGHT.y * reach);
@@ -173,6 +194,24 @@ const reliefTone = (lines: readonly RibbonPoint[][]) =>
     }
   });
 
+/** Gentle undulations of the blade, as a height field over the leaf (lengths in leaf lengths). */
+const surface = (x: number, y: number) =>
+  valueNoise(x * 2.6, y * 2.6, 29) + 0.5 * valueNoise(x * 5.5, y * 5.5, 31);
+
+/**
+ * Shading from the blade's subtle curling and lobing: darker where the surface
+ * slopes away from the light, lighter where it faces it. Positions are relative
+ * to the base in leaf lengths, so the undulations grow with the leaf.
+ */
+const curl = (x: number, y: number) => {
+  const step = 0.02;
+  const slope =
+    (surface(x - LIGHT.x * step, y - LIGHT.y * step) -
+      surface(x + LIGHT.x * step, y + LIGHT.y * step)) /
+    (2 * step);
+  return 0.16 * slope;
+};
+
 /** About this many pixels between candidate dots, whatever the leaf's size. */
 const SPACING = 1.4;
 
@@ -189,6 +228,8 @@ const stipple = (
   leaf: PreparedLeaf,
   darkness: Tone,
   seed: number,
+  /** Whether the blade's curl and a light ground of dots apply (not inside veins). */
+  onBlade: boolean,
 ) => {
   const { bounds, view, bladeScale } = leaf;
   const spacing = SPACING / view.scale;
@@ -196,6 +237,7 @@ const stipple = (
   const columns = Math.ceil((bounds.maxX - bounds.minX) / spacing);
   const firstRow = Math.floor(Math.min(bounds.minY, -0.2 * (bounds.maxY - bounds.minY)) / spacing);
   const lastRow = Math.ceil(bounds.maxY / spacing);
+  const length = leaf.leafLength || 1;
   const dots = new Path2D();
   for (let j = firstRow; j <= lastRow; j++) {
     for (let i = 0; i < columns; i++) {
@@ -204,16 +246,12 @@ const stipple = (
       const v = (j + hash2(i, j, seed + 2)) * spacing;
       const x = toScreenX(view, u * bladeScale);
       const y = toScreenY(view, v * bladeScale);
-      // Gentle, uneven patches of tone, as a hand never stipples quite evenly.
-      const d =
-        darkness(x, y) +
-        0.12 *
-          (valueNoise(
-            (u * 6) / (bounds.maxY - bounds.minY),
-            (v * 6) / (bounds.maxY - bounds.minY),
-            13,
-          ) -
-            0.5);
+      const d = onBlade
+        ? Math.max(
+            0.08,
+            darkness(x, y) + curl((x - leaf.base.x) / length, (y - leaf.base.y) / length),
+          )
+        : darkness(x, y);
       if (d <= 0.03 || hash2(i, j, seed + 3) > d) continue;
       const radius = 0.45 + 0.3 * d;
       dots.moveTo(x + radius, y);
@@ -245,7 +283,7 @@ const drawVeins = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
 
 const drawMargin = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
   const margin = new Path2D();
-  traceRibbon(margin, ribbon(wobble(closedLine(leaf.blade, 0.8), 2.4, 21)));
+  traceRibbon(margin, ribbon(wobble(closedLine(leaf.blade, MARGIN_HALF_WIDTH), 2.4, 21)));
   context.fillStyle = INK;
   context.fill(margin);
   // A second, fainter pass, slightly astray, for a living line.
@@ -258,9 +296,14 @@ const drawMargin = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
 
 /**
  * The petiole, drawn over the margin so the margin doesn't cut it off. Its
- * edges are open lines, continuing the midvein's, with only its far end closed.
+ * edges are drawn with the margin's pen, starting where they leave the blade
+ * (inside it, the midvein's finer edges carry on), and closed at the far end.
  */
-const drawPetiole = (context: CanvasRenderingContext2D, petiole: readonly RibbonPoint[]) => {
+const drawPetiole = (
+  context: CanvasRenderingContext2D,
+  petiole: readonly RibbonPoint[],
+  blade: Polygon,
+) => {
   const { left, right } = ribbon(inkLine(petiole));
   const shape = new Path2D();
   [...left, ...[...right].reverse()].forEach(({ x, y }, k) => {
@@ -272,7 +315,10 @@ const drawPetiole = (context: CanvasRenderingContext2D, petiole: readonly Ribbon
   context.fill(shape);
   const edges = new Path2D();
   for (const side of [left, right]) {
-    side.forEach(({ x, y }, k) => {
+    // Start one point early, tucked under the margin, so the two lines meet.
+    const leaves = side.findIndex(({ x, y }) => !polygonContains(blade, x, y));
+    if (leaves === -1) continue;
+    side.slice(Math.max(0, leaves - 1)).forEach(({ x, y }, k) => {
       if (k === 0) edges.moveTo(x, y);
       else edges.lineTo(x, y);
     });
@@ -283,10 +329,9 @@ const drawPetiole = (context: CanvasRenderingContext2D, petiole: readonly Ribbon
     edges.lineTo(endRight.x, endRight.y);
   }
   context.strokeStyle = INK;
-  context.globalAlpha = 0.8;
-  context.lineWidth = 0.7;
+  context.lineCap = "round";
+  context.lineWidth = 2 * MARGIN_HALF_WIDTH;
   context.stroke(edges);
-  context.globalAlpha = 1;
 };
 
 const drawLeaf = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
@@ -296,12 +341,12 @@ const drawLeaf = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
   if (tone !== undefined) {
     context.save();
     context.clip(blade, "evenodd");
-    stipple(context, leaf, tone, 1);
+    stipple(context, leaf, tone, 1, true);
     context.restore();
   }
   drawVeins(context, leaf);
   drawMargin(context, leaf);
-  drawPetiole(context, leaf.petiole);
+  drawPetiole(context, leaf.petiole, leaf.blade);
   // Model the midvein and petiole: stipple their shadow sides, within their own outlines.
   const lines = reliefLines(leaf);
   const relief = reliefTone(lines);
@@ -310,7 +355,7 @@ const drawLeaf = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
     for (const line of lines) traceRibbon(within, ribbon(line));
     context.save();
     context.clip(within);
-    stipple(context, leaf, relief, 11);
+    stipple(context, leaf, relief, 11, false);
     context.restore();
   }
 };

@@ -90,6 +90,10 @@ CSS foil for the options panel went through several versions: a diagonal gradien
 
 Stipple dots are placed on a lattice fixed to the final leaf, so they travel with the leaf as it grows instead of shimmering. But then a small leaf squeezes every dot into a fraction of the area, and looks far darker than the full-grown one (the whole final drawing, shrunk). Giving each candidate dot a random rank, and drawing only those ranked below the square of the blade's current scale, keeps the dots per pixel, and so the tone, constant: as the leaf grows, new dots appear between the old ones.
 
+### Shade derived from one chosen feature flickers as the choice changes
+
+The ink style first shaded the half of the blade beyond the midvein, choosing the midvein afresh each frame as the widest first-order vein. Near the tip, two growing veins took turns being widest, and the shading there flipped between light and dark. It also looked unnatural, like a yin-and-yang symbol. Folding the blade a little along every vein instead (each casting graded shade to one side, reaching further for wider veins), plus slopes of a gentle noise surface fixed to the leaf, gives richer relief with no single choice to flip.
+
 ### Draw texture after shading to keep it visible in the shade
 
 The leaf's cell texture was laid down before the soft shadows beside the veins, which then hid it. Applied after the shadows with an `overlay` blend, the same texture modulates whatever is beneath it, so the cell walls carry on through the shaded bands.
