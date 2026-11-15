@@ -1,4 +1,4 @@
-import { polygonContains, type Polygon } from "../../geometry/region";
+import type { Polygon } from "../../geometry/region";
 import { drawGhost, fillShadowOnly, polygonPath } from "../canvas";
 import { hash2 } from "../noise";
 import { ribbon, traceRibbon, type RibbonPoint } from "../ribbon";
@@ -9,6 +9,7 @@ import {
   curl,
   leafLattice,
   paintTone,
+  petioleEdges,
   shifted,
   wobble,
   type Tone,
@@ -136,21 +137,7 @@ const drawPetiole = (
   shape.closePath();
   context.fillStyle = PAPER;
   context.fill(shape);
-  const edges = new Path2D();
-  for (const side of [left, right]) {
-    // Start one point early, tucked under the margin, so the two lines meet.
-    const leaves = side.findIndex(({ x, y }) => !polygonContains(blade, x, y));
-    if (leaves === -1) continue;
-    side.slice(Math.max(0, leaves - 1)).forEach(({ x, y }, k) => {
-      if (k === 0) edges.moveTo(x, y);
-      else edges.lineTo(x, y);
-    });
-  }
-  const [endLeft, endRight] = [left.at(-1), right.at(-1)];
-  if (endLeft !== undefined && endRight !== undefined) {
-    edges.moveTo(endLeft.x, endLeft.y);
-    edges.lineTo(endRight.x, endRight.y);
-  }
+  const edges = petioleEdges(left, right, blade);
   context.strokeStyle = INK;
   context.lineCap = "round";
   context.lineWidth = 2 * MARGIN_HALF_WIDTH;

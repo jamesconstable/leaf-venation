@@ -1,4 +1,4 @@
-import type { Polygon } from "../../geometry/region";
+import { polygonContains, type Polygon } from "../../geometry/region";
 import { fillShadowOnly } from "../canvas";
 import { hash2, valueNoise } from "../noise";
 import { ribbon, traceRibbon, type RibbonPoint } from "../ribbon";
@@ -48,11 +48,20 @@ export type Tone = (x: number, y: number) => number;
 
 const TONE_SCALE = 0.5;
 
-/** Paints darkness (as alpha) offscreen over the given screen area, and returns a reader for it. */
-export const paintTone = (
+/** A tone map's canvas (darkness as alpha), and where its top left corner sits on screen. */
+export interface ToneImage {
+  readonly canvas: HTMLCanvasElement;
+  readonly left: number;
+  readonly top: number;
+  /** Tone map pixels per screen pixel. */
+  readonly scale: number;
+}
+
+/** Paints darkness (as alpha) offscreen, at reduced resolution, over the given screen area. */
+export const paintToneImage = (
   area: readonly { x: number; y: number }[],
   paint: (context: CanvasRenderingContext2D) => void,
-): Tone | undefined => {
+): ToneImage | undefined => {
   const xs = area.map((p) => p.x);
   const ys = area.map((p) => p.y);
   const [left, top] = [Math.min(...xs) - 4, Math.min(...ys) - 4];
@@ -66,6 +75,19 @@ export const paintTone = (
   if (context === null) return undefined;
   context.setTransform(TONE_SCALE, 0, 0, TONE_SCALE, -left * TONE_SCALE, -top * TONE_SCALE);
   paint(context);
+  return { canvas, left, top, scale: TONE_SCALE };
+};
+
+/** Paints darkness (as alpha) offscreen over the given screen area, and returns a reader for it. */
+export const paintTone = (
+  area: readonly { x: number; y: number }[],
+  paint: (context: CanvasRenderingContext2D) => void,
+): Tone | undefined => {
+  const image = paintToneImage(area, paint);
+  const context = image?.canvas.getContext("2d");
+  if (image === undefined || context === null || context === undefined) return undefined;
+  const { canvas, left, top } = image;
+  const [width, height] = [canvas.width, canvas.height];
   const pixels = context.getImageData(0, 0, width, height).data;
   return (x, y) => {
     const i = Math.floor((x - left) * TONE_SCALE);
@@ -100,9 +122,13 @@ export const fillShadowAt = (
   context.restore();
 };
 
-/** The blade's tones: the shaded half, the margin curving away, and each vein's relief. */
+/** The blade's tones: the margin curving away, folds along the veins, and each vein's relief. */
 export const bladeTone = (leaf: PreparedLeaf, blade: Path2D) =>
-  paintTone(leaf.blade, (context) => {
+  paintTone(leaf.blade, paintBladeTone(leaf, blade));
+
+/** Paints the blade's tones (see `bladeTone`) into a tone map. */
+export const paintBladeTone =
+  (leaf: PreparedLeaf, blade: Path2D) => (context: CanvasRenderingContext2D) => {
     context.clip(blade, "evenodd");
     const length = leaf.leafLength;
     const { x, y } = leaf.base;
@@ -160,7 +186,7 @@ export const bladeTone = (leaf: PreparedLeaf, blade: Path2D) =>
       fillShadowAt(context, path, "rgba(0, 0, 0, 0.75)", blur, LIGHT.x * reach, LIGHT.y * reach);
       context.globalCompositeOperation = "source-over";
     }
-  });
+  };
 
 /** Gentle undulations of the blade, as a height field over the leaf (lengths in leaf lengths). */
 export const surface = (x: number, y: number) =>
@@ -210,4 +236,32 @@ export const leafLattice = (
       visit(toScreenX(view, u * bladeScale), toScreenY(view, v * bladeScale), i, j);
     }
   }
+};
+
+/**
+ * A petiole's two edges as open lines, starting where they leave the blade
+ * (inside it, the midvein's own edges carry on), and the line closing its far
+ * end, so the margin need not be drawn across it.
+ */
+export const petioleEdges = (
+  left: readonly { x: number; y: number }[],
+  right: readonly { x: number; y: number }[],
+  blade: Polygon,
+): Path2D => {
+  const edges = new Path2D();
+  for (const side of [left, right]) {
+    // Start one point early, tucked under the margin, so the two lines meet.
+    const leaves = side.findIndex(({ x, y }) => !polygonContains(blade, x, y));
+    if (leaves === -1) continue;
+    side.slice(Math.max(0, leaves - 1)).forEach(({ x, y }, k) => {
+      if (k === 0) edges.moveTo(x, y);
+      else edges.lineTo(x, y);
+    });
+  }
+  const [endLeft, endRight] = [left.at(-1), right.at(-1)];
+  if (endLeft !== undefined && endRight !== undefined) {
+    edges.moveTo(endLeft.x, endLeft.y);
+    edges.lineTo(endRight.x, endRight.y);
+  }
+  return edges;
 };
