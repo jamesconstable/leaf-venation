@@ -162,12 +162,24 @@ const bladeTone = (leaf: PreparedLeaf, blade: Path2D) =>
           context.globalCompositeOperation = "source-over";
         }
       }
-      // Veins stand proud: crisp shade beside each on the side away from the light, light on the other.
-      const reach = 1.4 + 2 * halfWidth;
+      // Veins stand proud: crisp shade beside each on the side away from the light, light on the
+      // other. Blurring a thin shape dilutes it to nothing, so the narrowest veins cast theirs from
+      // a wider stand-in, and lay it down twice.
+      const edge = new Path2D();
+      for (const vein of group) {
+        traceRibbon(
+          edge,
+          ribbon(vein.centre.map((p) => ({ ...p, halfWidth: Math.max(p.halfWidth, 1.2) }))),
+        );
+      }
+      const reach = 1.6 + 2 * halfWidth;
       const blur = 1.5 + 2.5 * halfWidth;
-      fillShadowAt(context, path, "rgba(0, 0, 0, 1)", blur, -LIGHT.x * reach, -LIGHT.y * reach);
+      const passes = halfWidth < 1 ? 2 : 1;
+      for (let pass = 0; pass < passes; pass++) {
+        fillShadowAt(context, edge, "rgba(0, 0, 0, 1)", blur, -LIGHT.x * reach, -LIGHT.y * reach);
+      }
       context.globalCompositeOperation = "destination-out";
-      fillShadowAt(context, path, "rgba(0, 0, 0, 0.75)", blur, LIGHT.x * reach, LIGHT.y * reach);
+      fillShadowAt(context, edge, "rgba(0, 0, 0, 0.75)", blur, LIGHT.x * reach, LIGHT.y * reach);
       context.globalCompositeOperation = "source-over";
     }
   });
