@@ -73,7 +73,7 @@ const cellTexture = () =>
         // Cell walls glow pale, like the veins; the cells themselves are denser and darker.
         const wall = 1 - Math.min(1, (f2 - f1) / 2.2);
         const centre = Math.max(0, 1 - f1 / size);
-        const value = Math.round(255 * (0.3 + 0.55 * wall + 0.15 * (1 - centre)));
+        const value = Math.round(255 * (0.5 + 0.28 * wall + 0.08 * (1 - centre)));
         const i = 4 * (y * width + x);
         image.data[i] = value;
         image.data[i + 1] = value;
@@ -119,12 +119,34 @@ const drawBlade = (context: CanvasRenderingContext2D, leaf: PreparedLeaf, blade:
   warmth.addColorStop(1, "rgba(206, 214, 96, 0)");
   context.fillStyle = warmth;
   context.fill(blade);
+  context.restore();
+};
+
+/**
+ * The mesophyll's cells, laid over the vein shadows rather than under them, so
+ * the walls still show in the shade (overlay keeps contrast in darker tones).
+ */
+const drawCells = (context: CanvasRenderingContext2D, leaf: PreparedLeaf, blade: Path2D) => {
   const cellPattern = pinnedPattern(context, cellTexture(), leaf.base, 1);
-  if (cellPattern !== null) {
-    context.globalCompositeOperation = "overlay";
-    context.globalAlpha = 0.4;
-    context.fillStyle = cellPattern;
-    context.fill(blade);
+  if (cellPattern === null) return;
+  context.save();
+  context.clip(blade, "evenodd");
+  context.globalCompositeOperation = "overlay";
+  context.globalAlpha = 0.35;
+  context.fillStyle = cellPattern;
+  context.fill(blade);
+  context.restore();
+};
+
+/** Each vein sits in a soft shadow of denser tissue, a few times its width. */
+const drawVeinShadows = (context: CanvasRenderingContext2D, leaf: PreparedLeaf, blade: Path2D) => {
+  context.save();
+  context.clip(blade, "evenodd");
+  for (const { group, halfWidth } of byWidth(leaf.veins, 6)) {
+    if (group.length === 0) continue;
+    const path = new Path2D();
+    for (const vein of group) traceRibbon(path, widened(vein.centre, 3));
+    fillShadowOnly(context, path, "rgba(44, 84, 14, 0.5)", 1.5 + halfWidth * 3);
   }
   context.restore();
 };
@@ -132,23 +154,13 @@ const drawBlade = (context: CanvasRenderingContext2D, leaf: PreparedLeaf, blade:
 const drawVeins = (context: CanvasRenderingContext2D, leaf: PreparedLeaf, blade: Path2D) => {
   context.save();
   context.clip(blade, "evenodd");
-  // Each vein sits in a wide, soft shadow of denser tissue, several times its width.
-  for (const { group, halfWidth } of byWidth(leaf.veins, 6)) {
-    if (group.length === 0) continue;
-    const path = new Path2D();
-    for (const vein of group) traceRibbon(path, widened(vein.centre, 3));
-    // Blurring a thin shape dilutes it, so the shadow is laid down twice.
-    for (let pass = 0; pass < 2; pass++) {
-      fillShadowOnly(context, path, "rgba(30, 66, 10, 0.85)", 1.5 + halfWidth * 4);
-    }
-  }
   // Paler cores: wider veins glow most.
   for (const vein of leaf.veins) {
     const path = new Path2D();
     traceRibbon(path, vein.ribbon);
     context.fillStyle =
       vein.order <= 1
-        ? "rgba(222, 238, 150, 0.95)"
+        ? "rgb(220, 237, 148)"
         : vein.order === 2
           ? "rgba(214, 234, 140, 0.9)"
           : "rgba(204, 228, 128, 0.8)";
@@ -182,7 +194,7 @@ const drawPetiole = (context: CanvasRenderingContext2D, petiole: readonly Ribbon
   const shape = new Path2D();
   traceRibbon(shape, ribbon(petiole));
   // Pale like the midvein it continues, which it overlaps inside the blade.
-  context.fillStyle = "#c4de78";
+  context.fillStyle = "rgb(220, 237, 148)";
   context.fill(shape);
   // A pale highlight along the stalk.
   const highlight = new Path2D();
@@ -203,6 +215,8 @@ const drawLeaf = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
   traceRibbon(petiole, ribbon(leaf.petiole));
   fillShadowOnly(context, petiole, "rgba(20, 44, 8, 0.45)", 3);
   drawBlade(context, leaf, blade);
+  drawVeinShadows(context, leaf, blade);
+  drawCells(context, leaf, blade);
   drawVeins(context, leaf, blade);
   drawRim(context, leaf, blade);
   // Drawn last, so the margin doesn't cut it off from the blade.
