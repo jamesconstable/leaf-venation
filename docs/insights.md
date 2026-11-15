@@ -82,9 +82,17 @@ The soft shadows beside veins were first drawn as the blurred shadow of each vei
 
 The style swatches drew stray straight lines across their miniature leaves. They had been given the blade at leaf length 1, while vein positions are in simulation units, 200 times larger, so nearly every vein was drawn far off the swatch and the midvein appeared as a long line. Both values had the type `Region`. A _branded_ type for each coordinate system (normalised, simulation and screen) would have turned this into a compile error; a candidate for later.
 
-### Foil catches one light
+### Convincing foil is harder than it looks
 
-Metallic foil looked like a plain diagonal gradient until three things changed: narrow, sharp highlight bands against darker metal instead of a smooth ramp; a fine, crinkled grain varying in brightness (an earlier grain varied only in transparency over mid-grey, which a soft-light blend leaves unchanged); and one pattern of bands pinned to the window (`background-attachment: fixed`) and shared by every foiled element, shifted as the pointer moves. Each pill then shows a different part of the same light, as real foil would.
+CSS foil for the options panel went through several versions: a diagonal gradient (read as just that), then narrow highlight bands with a crinkled grain (an earlier grain varied only in transparency over mid-grey, which a soft-light blend leaves unchanged), pinned to the window with `background-attachment: fixed` and shifted as the pointer moved, so every pill showed a different part of the same light. It was clever but didn't survive review: the range of brightness made text on the foil unreadable in places, the pieces still didn't look lit by one light, the light moved only sideways and froze when the pointer left the panel, and repainting fixed backgrounds lagged slightly. Flat colour replaced it for now.
+
+### Hold a drawing's tone steady as the leaf grows
+
+Stipple dots are placed on a lattice fixed to the final leaf, so they travel with the leaf as it grows instead of shimmering. But then a small leaf squeezes every dot into a fraction of the area, and looks far darker than the full-grown one (the whole final drawing, shrunk). Giving each candidate dot a random rank, and drawing only those ranked below the square of the blade's current scale, keeps the dots per pixel, and so the tone, constant: as the leaf grows, new dots appear between the old ones.
+
+### Draw texture after shading to keep it visible in the shade
+
+The leaf's cell texture was laid down before the soft shadows beside the veins, which then hid it. Applied after the shadows with an `overlay` blend, the same texture modulates whatever is beneath it, so the cell walls carry on through the shaded bands.
 
 ### A reactive framework can reset an input before you read it
 

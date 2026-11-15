@@ -4,7 +4,7 @@ Each milestone is developed on its own branch with small, logical commits; tests
 
 1. **Skeleton**: tooling and git hooks; `simulation/` core for open and closed venation with no growth; 3 leaf outlines; one plain style; auxin source and vein node overlays; unit, property and golden tests.
 2. **Growth**: marginal and isogonic growth; detail; node budget; starting outline and ghost; playback.
-3. **Beauty**: glass panel; bokeh; paper textures; all eight styles; vein smoothing and widths.
+3. **Beauty**: card stock panel; bokeh; paper textures; all eight styles; vein smoothing and widths.
    - **Decision point**: make the repo public and set up GitHub Actions CI and the Pages deploy?
 4. **Catalogue**: all 16 leaf outlines; margin teeth; the eight paper specimens; thumbnails. Retune slider ranges and defaults: dense closed venation wants very high dart densities and very low birth distances, beyond the current ranges.
 5. **Sharing**: URL codec; SVG and PNG export; keyboard shortcuts; timeline scrubber; trace to base.
@@ -23,3 +23,5 @@ Each milestone is developed on its own branch with small, logical commits; tests
 - Parallax and wind on the bokeh background.
 - Slower playback than one step per frame (e.g. one step every few frames): isogonic growth is most satisfying to watch at the slowest speed, and performance leaves plenty of headroom.
 - Playwright screenshot tests for styles.
+- Revisit the panel's styling: foil-stamped selections were tried and set aside for flat colour (see insights).
+- Speed up the stippled ink style: it takes about 17 ms a frame on a full-size leaf, against 8 ms for spring green.
