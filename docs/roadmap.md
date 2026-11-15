@@ -25,3 +25,4 @@ Each milestone is developed on its own branch with small, logical commits; tests
 - Playwright screenshot tests for styles.
 - Revisit the panel's styling: foil-stamped selections were tried and set aside for flat colour (see insights).
 - Speed up the stippled ink style: it takes about 17 ms a frame on a full-size leaf, against 8 ms for spring green.
+- Ink style: the finest veins fade into the brightest parts of the blade. Raising the stipple floor flattened the contrast, and stronger or wider shade beside narrow veins made them look lumpy; still to solve.
