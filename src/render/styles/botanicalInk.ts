@@ -6,13 +6,19 @@ import type { PreparedLeaf, PreparedVein, Style } from "../style";
 import { toScreenX, toScreenY } from "../view";
 
 /**
- * Pen and ink in the manner of an engraved botanical plate. The blade is shaded
- * with dense, fine hatching that follows its form; veins are left as thin,
- * uninked lines of paper, given their shape by the darker hatching beside them.
+ * Pen and ink in the manner of a stippled botanical study. The blade is shaded
+ * with fine dots, lit from the upper right: the far half of the blade is in
+ * shade, the blade darkens as it curves away toward the margin, and each vein
+ * stands slightly proud, with shade on one side and light on the other. Veins
+ * are left as lines of paper, and the midvein and petiole are modelled with
+ * their own shading on their shadow side.
  */
 
-const INK = "#2b2019";
+const INK = "#241a14";
 const PAPER = "#f3e9d3";
+
+/** The direction toward the light, in screen coordinates (upper right). */
+const LIGHT = { x: 0.6, y: -0.8 };
 
 /** Nudges a line sideways by smooth noise at two scales, as a steady but human hand would. */
 const wobble = (points: readonly RibbonPoint[], amount: number, seed: number): RibbonPoint[] =>
@@ -28,16 +34,53 @@ const wobble = (points: readonly RibbonPoint[], amount: number, seed: number): R
     };
   });
 
+/** Veins and petiole share one wobble, so where they overlap their lines coincide. */
+const inkLine = (centre: readonly RibbonPoint[]) =>
+  wobble(centre, 0.7, 5).map((p) => ({ ...p, halfWidth: Math.max(0.5, p.halfWidth) }));
+
 /** A closed polygon as a ribbon centre line (the first point repeated at the end). */
 const closedLine = (polygon: Polygon, halfWidth: number): RibbonPoint[] =>
   [...polygon, ...polygon.slice(0, 1)].map(({ x, y }) => ({ x, y, halfWidth }));
 
+/** A centre line moved toward or away from the light by a multiple of its own half width. */
+const shifted = (centre: readonly RibbonPoint[], by: number, widthFactor: number) =>
+  centre.map((p) => ({
+    x: p.x + LIGHT.x * by * p.halfWidth,
+    y: p.y + LIGHT.y * by * p.halfWidth,
+    halfWidth: p.halfWidth * widthFactor,
+  }));
+
 /** Darkness in [0, 1] at screen positions, read from a tone map painted at reduced resolution. */
-interface ToneMap {
-  readonly darkness: (x: number, y: number) => number;
-}
+type Tone = (x: number, y: number) => number;
 
 const TONE_SCALE = 0.5;
+
+/** Paints darkness (as alpha) offscreen over the given screen area, and returns a reader for it. */
+const paintTone = (
+  area: readonly { x: number; y: number }[],
+  paint: (context: CanvasRenderingContext2D) => void,
+): Tone | undefined => {
+  const xs = area.map((p) => p.x);
+  const ys = area.map((p) => p.y);
+  const [left, top] = [Math.min(...xs) - 4, Math.min(...ys) - 4];
+  const width = Math.ceil((Math.max(...xs) + 4 - left) * TONE_SCALE);
+  const height = Math.ceil((Math.max(...ys) + 4 - top) * TONE_SCALE);
+  if (!(width > 0 && height > 0)) return undefined;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (context === null) return undefined;
+  context.setTransform(TONE_SCALE, 0, 0, TONE_SCALE, -left * TONE_SCALE, -top * TONE_SCALE);
+  paint(context);
+  const pixels = context.getImageData(0, 0, width, height).data;
+  return (x, y) => {
+    const i = Math.floor((x - left) * TONE_SCALE);
+    const j = Math.floor((y - top) * TONE_SCALE);
+    if (i < 0 || j < 0 || i >= width || j >= height) return 0;
+    return (pixels[4 * (j * width + i) + 3] ?? 0) / 255;
+  };
+};
 
 const groupByWidth = (veins: readonly PreparedVein[], groups: number) => {
   const widest = veins.reduce((max, v) => Math.max(max, v.halfWidth), 0.3);
@@ -49,170 +92,148 @@ const groupByWidth = (veins: readonly PreparedVein[], groups: number) => {
   return buckets.map((group, i) => ({ group, halfWidth: widest * ((i + 0.5) / groups) ** 2 }));
 };
 
-/**
- * Paints the leaf's tones offscreen: lit from the upper left, in soft uneven
- * patches, darker where the blade curves away toward the margin, and darkest in
- * the soft hollows beside each vein.
- */
-const paintToneMap = (leaf: PreparedLeaf, blade: Path2D): ToneMap | undefined => {
-  const xs = leaf.blade.map((p) => p.x);
-  const ys = leaf.blade.map((p) => p.y);
-  const [left, top] = [Math.min(...xs) - 4, Math.min(...ys) - 4];
-  const width = Math.ceil((Math.max(...xs) + 4 - left) * TONE_SCALE);
-  const height = Math.ceil((Math.max(...ys) + 4 - top) * TONE_SCALE);
-  if (!(width > 0 && height > 0)) return undefined;
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (context === null) return undefined;
-  context.setTransform(TONE_SCALE, 0, 0, TONE_SCALE, -left * TONE_SCALE, -top * TONE_SCALE);
+/** Fills a shape's blurred shadow, moved by an offset in screen units. */
+const fillShadowAt = (
+  context: CanvasRenderingContext2D,
+  path: Path2D,
+  colour: string,
+  blur: number,
+  dx: number,
+  dy: number,
+) => {
   context.save();
-  context.clip(blade, "evenodd");
-
-  const length = leaf.leafLength;
-  const light = context.createLinearGradient(
-    leaf.base.x - 0.4 * length,
-    leaf.base.y - length,
-    leaf.base.x + 0.4 * length,
-    leaf.base.y,
-  );
-  light.addColorStop(0, "rgba(0, 0, 0, 0)");
-  light.addColorStop(0.35, "rgba(0, 0, 0, 0.12)");
-  light.addColorStop(1, "rgba(0, 0, 0, 0.5)");
-  context.fillStyle = light;
-  context.fill(blade);
-
-  // Toward the margin the blade curves away from the light.
-  const band = new Path2D();
-  traceRibbon(band, ribbon(closedLine(leaf.blade, 0.03 * length)));
-  fillShadowOnly(context, band, "rgba(0, 0, 0, 0.4)", 0.05 * length);
-
-  // Hollows beside each vein.
-  for (const { group, halfWidth } of groupByWidth(leaf.veins, 5)) {
-    if (group.length === 0) continue;
-    const path = new Path2D();
-    for (const vein of group) {
-      traceRibbon(path, ribbon(vein.centre.map((p) => ({ ...p, halfWidth: p.halfWidth * 2 }))));
-    }
-    fillShadowOnly(context, path, "rgba(0, 0, 0, 0.75)", 1.5 + halfWidth * 4);
-  }
+  context.translate(dx, dy);
+  fillShadowOnly(context, path, colour, blur);
   context.restore();
-
-  const pixels = context.getImageData(0, 0, width, height).data;
-  return {
-    darkness: (x, y) => {
-      const i = Math.floor((x - left) * TONE_SCALE);
-      const j = Math.floor((y - top) * TONE_SCALE);
-      if (i < 0 || j < 0 || i >= width || j >= height) return 0;
-      return (pixels[4 * (j * width + i) + 3] ?? 0) / 255;
-    },
-  };
 };
 
-const smoothstep = (edge0: number, edge1: number, x: number) => {
-  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
+/** The blade's tones: the shaded half, the margin curving away, and each vein's relief. */
+const bladeTone = (leaf: PreparedLeaf, blade: Path2D) =>
+  paintTone(leaf.blade, (context) => {
+    context.clip(blade, "evenodd");
+    const length = leaf.leafLength;
+    const { x, y } = leaf.base;
+    // Light falls a little more strongly toward the right of the blade.
+    const light = context.createLinearGradient(x - 0.5 * length, y, x + 0.5 * length, y);
+    light.addColorStop(0, "rgba(0, 0, 0, 0.3)");
+    light.addColorStop(1, "rgba(0, 0, 0, 0.14)");
+    context.fillStyle = light;
+    context.fill(blade);
+    // The blade folds slightly along the midvein, so the half facing away from the light is in shade.
+    // Veins are sorted by width, so the last of the first order is the widest.
+    const midvein = leaf.veins.filter((vein) => vein.order <= 1).at(-1)?.centre ?? [];
+    const tip = midvein.at(-1) ?? { x, y: y - length };
+    const shade = new Path2D();
+    shade.moveTo(x, y + length);
+    for (const p of [leaf.base, ...midvein]) shade.lineTo(p.x, p.y);
+    shade.lineTo(tip.x, tip.y - length);
+    shade.lineTo(tip.x - 2 * length, tip.y - length);
+    shade.lineTo(x - 2 * length, y + length);
+    shade.closePath();
+    fillShadowOnly(context, shade, "rgba(0, 0, 0, 0.6)", 0.03 * length);
+
+    // Toward the margin the blade curves away from the light.
+    const band = new Path2D();
+    traceRibbon(band, ribbon(closedLine(leaf.blade, 0.025 * length)));
+    fillShadowOnly(context, band, "rgba(0, 0, 0, 0.55)", 0.04 * length);
+
+    // Veins stand proud: shade beside each on the side away from the light, light on the other.
+    for (const { group, halfWidth } of groupByWidth(leaf.veins, 5)) {
+      if (group.length === 0) continue;
+      const path = new Path2D();
+      for (const vein of group) traceRibbon(path, ribbon(vein.centre));
+      const reach = 1.4 + 2 * halfWidth;
+      const blur = 1.5 + 2.5 * halfWidth;
+      fillShadowAt(context, path, "rgba(0, 0, 0, 1)", blur, -LIGHT.x * reach, -LIGHT.y * reach);
+      context.globalCompositeOperation = "destination-out";
+      fillShadowAt(context, path, "rgba(0, 0, 0, 0.75)", blur, LIGHT.x * reach, LIGHT.y * reach);
+      context.globalCompositeOperation = "source-over";
+    }
+  });
+
+/** Ribbons modelled in relief: the widest veins and the petiole. */
+const reliefLines = (leaf: PreparedLeaf) => {
+  const widest = leaf.veins.reduce((max, v) => Math.max(max, v.halfWidth), 0);
+  return [
+    ...leaf.veins
+      .filter((vein) => vein.order <= 1 && vein.halfWidth >= 0.5 * widest && vein.halfWidth > 1)
+      .map((vein) => inkLine(vein.centre)),
+    inkLine(leaf.petiole),
+  ];
 };
+
+/** Shade along the side of each relief ribbon facing away from the light. */
+const reliefTone = (lines: readonly RibbonPoint[][]) =>
+  paintTone(lines.flat(), (context) => {
+    for (const line of lines) {
+      const path = new Path2D();
+      traceRibbon(path, ribbon(shifted(line, -0.75, 0.4)));
+      const halfWidth = line.reduce((max, p) => Math.max(max, p.halfWidth), 0);
+      fillShadowOnly(context, path, "rgba(0, 0, 0, 0.7)", 0.3 + 0.4 * halfWidth);
+    }
+  });
+
+/** About this many pixels between candidate dots, whatever the leaf's size. */
+const SPACING = 1.4;
 
 /**
- * Hatches the blade in the manner of an engraving. Each stroke starts at a
- * point on a jittered lattice and is traced a short way in both directions
- * along the contours of the tone map, so neighbouring strokes run roughly
- * parallel and curve with the form. Strokes appear only where the tone is dark
- * enough, grow longer where it is darker, and the darkest areas get a second,
- * crossing layer. Lattice points are fixed in leaf coordinates, so the hatching
- * grows with the leaf rather than shimmering as it changes size.
+ * Stipples where the tone is dark. Candidate dots sit on a jittered lattice
+ * fixed in the final leaf's coordinates, so they move with the leaf as it grows
+ * rather than shimmering. While the leaf is small, the same lattice would crowd
+ * its dots together, so only a fraction (by each dot's rank) is drawn, keeping
+ * the density on screen, and so the overall tone, the same at every size: as the
+ * leaf grows, new dots appear between the old.
  */
-const hatch = (context: CanvasRenderingContext2D, leaf: PreparedLeaf, tone: ToneMap) => {
+const stipple = (
+  context: CanvasRenderingContext2D,
+  leaf: PreparedLeaf,
+  darkness: Tone,
+  seed: number,
+) => {
   const { bounds, view, bladeScale } = leaf;
-  // Gentle, uneven patches of tone, smooth across the leaf.
-  const darkness = (x: number, y: number) => {
-    const u = (x - leaf.base.x) / leaf.leafLength;
-    const v = (y - leaf.base.y) / leaf.leafLength;
-    return tone.darkness(x, y) + 0.16 * (valueNoise(u * 5, v * 5, 13) - 0.5);
-  };
-  // The direction of a contour, from the tone's gradient sampled over a few pixels.
-  const contour = (x: number, y: number, cross: boolean): [number, number] => {
-    const reach = 5;
-    const gx = tone.darkness(x + reach, y) - tone.darkness(x - reach, y);
-    const gy = tone.darkness(x, y + reach) - tone.darkness(x, y - reach);
-    const flat = Math.hypot(gx, gy) < 0.02;
-    const angle =
-      (flat ? 0.7 + 0.3 * valueNoise(x / 80, y / 80) : Math.atan2(gy, gx) + Math.PI / 2) +
-      (cross ? 1.05 : 0);
-    return [Math.cos(angle), Math.sin(angle)];
-  };
-  const trace = (path: Path2D, x: number, y: number, length: number, cross: boolean) => {
-    const steps = 4;
-    const stepLength = length / (2 * steps);
-    const points: [number, number][] = [[x, y]];
-    for (const sign of [1, -1]) {
-      let [px, py] = [x, y];
-      let [previousX, previousY] = contour(x, y, cross);
-      previousX *= sign;
-      previousY *= sign;
-      for (let k = 0; k < steps; k++) {
-        let [dx, dy] = contour(px, py, cross);
-        // Keep heading the same way: a contour's direction is only defined up to sign.
-        if (dx * previousX + dy * previousY < 0) [dx, dy] = [-dx, -dy];
-        px += dx * stepLength;
-        py += dy * stepLength;
-        [previousX, previousY] = [dx, dy];
-        if (sign === 1) points.push([px, py]);
-        else points.unshift([px, py]);
-      }
-    }
-    points.forEach(([px, py], k) => {
-      if (k === 0) path.moveTo(px, py);
-      else path.lineTo(px, py);
-    });
-  };
-
-  // About 3 pixels between strokes once the leaf is full size.
-  const spacing = 3 / view.scale;
+  const spacing = SPACING / view.scale;
+  const shown = bladeScale * bladeScale;
   const columns = Math.ceil((bounds.maxX - bounds.minX) / spacing);
-  const rows = Math.ceil((bounds.maxY - bounds.minY) / spacing);
-  const fine = new Path2D();
-  const firm = new Path2D();
-  for (let j = 0; j < rows; j++) {
+  const firstRow = Math.floor(Math.min(bounds.minY, -0.2 * (bounds.maxY - bounds.minY)) / spacing);
+  const lastRow = Math.ceil(bounds.maxY / spacing);
+  const dots = new Path2D();
+  for (let j = firstRow; j <= lastRow; j++) {
     for (let i = 0; i < columns; i++) {
-      const u = bounds.minX + (i + 0.8 * hash2(i, j, 1)) * spacing;
-      const v = bounds.minY + (j + 0.8 * hash2(i, j, 2)) * spacing;
+      if (hash2(i, j, seed) >= shown) continue;
+      const u = bounds.minX + (i + hash2(i, j, seed + 1)) * spacing;
+      const v = (j + hash2(i, j, seed + 2)) * spacing;
       const x = toScreenX(view, u * bladeScale);
       const y = toScreenY(view, v * bladeScale);
-      const d = darkness(x, y);
-      if (hash2(i, j, 3) > smoothstep(0.04, 0.55, d)) continue;
-      trace(d > 0.5 ? firm : fine, x, y, 5 + 9 * d, false);
-      if (d > 0.55 && hash2(i, j, 4) < smoothstep(0.55, 0.85, d))
-        trace(fine, x, y, 4 + 5 * d, true);
+      // Gentle, uneven patches of tone, as a hand never stipples quite evenly.
+      const d =
+        darkness(x, y) +
+        0.12 *
+          (valueNoise(
+            (u * 6) / (bounds.maxY - bounds.minY),
+            (v * 6) / (bounds.maxY - bounds.minY),
+            13,
+          ) -
+            0.5);
+      if (d <= 0.03 || hash2(i, j, seed + 3) > d) continue;
+      const radius = 0.45 + 0.3 * d;
+      dots.moveTo(x + radius, y);
+      dots.arc(x, y, radius, 0, 2 * Math.PI);
     }
   }
-  context.save();
-  context.lineCap = "round";
-  context.lineJoin = "round";
-  context.strokeStyle = INK;
-  context.globalAlpha = 0.6;
-  context.lineWidth = 0.45;
-  context.stroke(fine);
-  context.globalAlpha = 0.8;
-  context.lineWidth = 0.6;
-  context.stroke(firm);
-  context.restore();
+  context.fillStyle = INK;
+  context.globalAlpha = 0.92;
+  context.fill(dots);
+  context.globalAlpha = 1;
 };
 
 const drawVeins = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
   for (const vein of leaf.veins) {
-    const line = wobble(vein.centre, 0.7, 5).map((p) => ({
-      ...p,
-      halfWidth: Math.max(0.5, p.halfWidth),
-    }));
     const path = new Path2D();
-    traceRibbon(path, ribbon(line));
-    // Wider veins get a fine inked edge; finer ones are defined by the hatching alone.
+    traceRibbon(path, ribbon(inkLine(vein.centre)));
+    // Wider veins get a fine inked edge; finer ones are defined by the stippling alone.
     if (vein.order <= 2 && vein.halfWidth > 1) {
       context.strokeStyle = INK;
-      context.globalAlpha = 0.7;
+      context.globalAlpha = 0.75;
       context.lineWidth = 0.6;
       context.stroke(path);
       context.globalAlpha = 1;
@@ -235,48 +256,71 @@ const drawMargin = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
   context.globalAlpha = 1;
 };
 
+/**
+ * The petiole, drawn over the margin so the margin doesn't cut it off. Its
+ * edges are open lines, continuing the midvein's, with only its far end closed.
+ */
 const drawPetiole = (context: CanvasRenderingContext2D, petiole: readonly RibbonPoint[]) => {
-  const line = wobble(petiole, 0.8, 41);
+  const { left, right } = ribbon(inkLine(petiole));
   const shape = new Path2D();
-  traceRibbon(shape, ribbon(line));
+  [...left, ...[...right].reverse()].forEach(({ x, y }, k) => {
+    if (k === 0) shape.moveTo(x, y);
+    else shape.lineTo(x, y);
+  });
+  shape.closePath();
   context.fillStyle = PAPER;
   context.fill(shape);
+  const edges = new Path2D();
+  for (const side of [left, right]) {
+    side.forEach(({ x, y }, k) => {
+      if (k === 0) edges.moveTo(x, y);
+      else edges.lineTo(x, y);
+    });
+  }
+  const [endLeft, endRight] = [left.at(-1), right.at(-1)];
+  if (endLeft !== undefined && endRight !== undefined) {
+    edges.moveTo(endLeft.x, endLeft.y);
+    edges.lineTo(endRight.x, endRight.y);
+  }
   context.strokeStyle = INK;
-  context.lineWidth = 0.8;
-  context.stroke(shape);
-  // Shade the stalk's far side with a firmer line.
-  const shade = new Path2D();
-  traceRibbon(
-    shade,
-    ribbon(line.map((p) => ({ ...p, x: p.x + p.halfWidth * 0.55, halfWidth: p.halfWidth * 0.35 }))),
-  );
-  context.fillStyle = INK;
-  context.globalAlpha = 0.75;
-  context.fill(shade);
+  context.globalAlpha = 0.8;
+  context.lineWidth = 0.7;
+  context.stroke(edges);
   context.globalAlpha = 1;
 };
 
 const drawLeaf = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
-  drawGhost(context, leaf.ghost, "rgba(43, 32, 25, 0.35)", [1.5, 4]);
+  drawGhost(context, leaf.ghost, "rgba(36, 26, 20, 0.35)", [1.5, 4]);
   const blade = polygonPath(leaf.blade, leaf.bladeHoles);
-  drawPetiole(context, leaf.petiole);
-  const tone = paintToneMap(leaf, blade);
+  const tone = bladeTone(leaf, blade);
   if (tone !== undefined) {
     context.save();
     context.clip(blade, "evenodd");
-    hatch(context, leaf, tone);
+    stipple(context, leaf, tone, 1);
     context.restore();
   }
   drawVeins(context, leaf);
   drawMargin(context, leaf);
+  drawPetiole(context, leaf.petiole);
+  // Model the midvein and petiole: stipple their shadow sides, within their own outlines.
+  const lines = reliefLines(leaf);
+  const relief = reliefTone(lines);
+  if (relief !== undefined) {
+    const within = new Path2D();
+    for (const line of lines) traceRibbon(within, ribbon(line));
+    context.save();
+    context.clip(within);
+    stipple(context, leaf, relief, 11);
+    context.restore();
+  }
 };
 
 export const botanicalInk: Style = {
   id: "botanical-ink",
   name: "Botanical ink",
-  description: "Pen and ink on cream paper, hatched like an engraved botanical plate",
+  description: "Pen and ink on cream paper, stippled like a botanical study",
   theme: {
-    accent: "#7a3324",
+    accent: "#7a5230",
     onAccent: "#fbf3e4",
     card: "#f6eedd",
     cardEdge: "rgba(110, 84, 56, 0.28)",
