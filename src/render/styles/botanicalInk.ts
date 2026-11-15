@@ -248,7 +248,7 @@ const stipple = (
       const y = toScreenY(view, v * bladeScale);
       const d = onBlade
         ? Math.max(
-            0.16,
+            0.08,
             darkness(x, y) + curl((x - leaf.base.x) / length, (y - leaf.base.y) / length),
           )
         : darkness(x, y);
