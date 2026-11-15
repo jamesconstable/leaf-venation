@@ -78,15 +78,11 @@ export const paintToneImage = (
   return { canvas, left, top, scale: TONE_SCALE };
 };
 
-/** Paints darkness (as alpha) offscreen over the given screen area, and returns a reader for it. */
-export const paintTone = (
-  area: readonly { x: number; y: number }[],
-  paint: (context: CanvasRenderingContext2D) => void,
-): Tone | undefined => {
-  const image = paintToneImage(area, paint);
-  const context = image?.canvas.getContext("2d");
-  if (image === undefined || context === null || context === undefined) return undefined;
+/** Reads darkness from a tone map at screen positions. */
+export const toneReader = (image: ToneImage): Tone | undefined => {
   const { canvas, left, top } = image;
+  const context = canvas.getContext("2d");
+  if (context === null) return undefined;
   const [width, height] = [canvas.width, canvas.height];
   const pixels = context.getImageData(0, 0, width, height).data;
   return (x, y) => {
@@ -95,6 +91,15 @@ export const paintTone = (
     if (i < 0 || j < 0 || i >= width || j >= height) return 0;
     return (pixels[4 * (j * width + i) + 3] ?? 0) / 255;
   };
+};
+
+/** Paints darkness (as alpha) offscreen over the given screen area, and returns a reader for it. */
+export const paintTone = (
+  area: readonly { x: number; y: number }[],
+  paint: (context: CanvasRenderingContext2D) => void,
+): Tone | undefined => {
+  const image = paintToneImage(area, paint);
+  return image === undefined ? undefined : toneReader(image);
 };
 
 export const groupByWidth = (veins: readonly PreparedVein[], groups: number) => {
