@@ -154,7 +154,11 @@ export const App = () => {
             blade={config()?.blade}
             snapshot={snapshot()}
             veinWidthExponent={veinWidthExponent()}
-            onSelect={setStyle}
+            onSelect={(chosen) => {
+              setStyle(chosen);
+              const suggested = chosen.suggestedOverlays;
+              if (suggested !== undefined) setOverlays({ ...overlays(), ...suggested });
+            }}
           />
         </Section>
 

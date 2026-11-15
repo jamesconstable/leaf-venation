@@ -39,6 +39,8 @@ export type Backdrop =
       readonly paper: string;
       readonly fibre: string;
       readonly vignette: string;
+      /** Ruled like graph paper: fine lines `spacing` pixels apart, every fifth one heavier. */
+      readonly grid?: { readonly minor: string; readonly major: string; readonly spacing: number };
     };
 
 /** A vein, ready to draw: its smoothed centre line in screen coordinates. */
@@ -82,6 +84,8 @@ export interface Style {
   readonly backdrop: Backdrop;
   /** Overlay colours: auxin sources, kill distance circles and vein nodes. */
   readonly overlay: { readonly source: string; readonly kill: string; readonly node: string };
+  /** Overlays to switch on when this style is chosen (they can still be switched off). */
+  readonly suggestedOverlays?: { readonly auxinSources?: boolean; readonly veinNodes?: boolean };
   /** Draws the leaf onto a transparent canvas above the backdrop. */
   readonly drawLeaf: (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => void;
 }

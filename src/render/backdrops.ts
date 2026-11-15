@@ -34,7 +34,7 @@ const paperGrain = (backdrop: PaperBackdrop) => {
   return tile;
 };
 
-/** Paper: a flat ground, grain, scattered fibres and a gentle vignette. */
+/** Paper: a flat ground, grain, scattered fibres, an optional grid and a gentle vignette. */
 export const paintPaper = (
   context: CanvasRenderingContext2D,
   width: number,
@@ -72,6 +72,28 @@ export const paintPaper = (
     context.stroke();
   }
   context.globalAlpha = 1;
+
+  if (backdrop.grid !== undefined) {
+    const { minor, major, spacing } = backdrop.grid;
+    // Lines sit on half pixels, so they stay crisp.
+    for (const [colour, every, lineWidth] of [
+      [minor, 1, 0.5],
+      [major, 5, 0.75],
+    ] as const) {
+      const lines = new Path2D();
+      for (let x = 0; x <= width; x += spacing * every) {
+        lines.moveTo(Math.round(x) + 0.5, 0);
+        lines.lineTo(Math.round(x) + 0.5, height);
+      }
+      for (let y = 0; y <= height; y += spacing * every) {
+        lines.moveTo(0, Math.round(y) + 0.5);
+        lines.lineTo(width, Math.round(y) + 0.5);
+      }
+      context.strokeStyle = colour;
+      context.lineWidth = lineWidth;
+      context.stroke(lines);
+    }
+  }
 
   const vignette = context.createRadialGradient(
     width / 2,

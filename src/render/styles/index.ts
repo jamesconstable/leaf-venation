@@ -6,6 +6,7 @@ import { deepSummerGreen } from "./deepSummerGreen";
 import { graphiteStudy } from "./graphiteStudy";
 import { skeletonLeaf } from "./skeletonLeaf";
 import { springGreen } from "./springGreen";
+import { technicalStudy } from "./technicalStudy";
 
 export const styles: readonly Style[] = [
   springGreen,
@@ -14,6 +15,7 @@ export const styles: readonly Style[] = [
   cyanotype,
   botanicalInk,
   graphiteStudy,
+  technicalStudy,
   skeletonLeaf,
 ];
 
