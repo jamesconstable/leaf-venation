@@ -54,7 +54,7 @@ export const prepareLeaf = (
     base,
   };
   if (snapshot === undefined) {
-    return { ...outline, veins: [], petiole: petiole(base, leafLength, FINEST_WIDTH / 2) };
+    return { ...outline, veins: [], petiole: petiole([], base, leafLength, FINEST_WIDTH / 2) };
   }
 
   const { xs, ys, parents, veinScale } = snapshot;
@@ -104,32 +104,76 @@ export const prepareLeaf = (
     const order = Math.max(nodeOrder[a] ?? 1, nodeOrder[b] ?? 1);
     veins.push(prepare([a, b], order, () => width));
   }
-  veins.sort((p, q) => p.halfWidth - q.halfWidth);
-  const midvein = veins.reduce(
-    (widest, vein) => Math.max(widest, vein.halfWidth),
-    FINEST_WIDTH / 2,
+  // The petiole continues the widest vein leaving the initial vein node nearest the base.
+  const distance = ({ centre }: PreparedVein) =>
+    centre[0] === undefined
+      ? Infinity
+      : Math.abs(centre[0].x - base.x) + Math.abs(centre[0].y - base.y);
+  const midvein = paths
+    .flatMap((path, k) => {
+      const vein = veins[k];
+      return vein !== undefined && parents[path.nodes[0] ?? 0] === -1 ? [vein] : [];
+    })
+    .reduce<PreparedVein | undefined>((best, vein) => {
+      if (best === undefined) return vein;
+      const [d, e] = [distance(vein), distance(best)];
+      return d < e - 1 || (d <= e + 1 && vein.halfWidth > best.halfWidth) ? vein : best;
+    }, undefined);
+  const stalk = petiole(
+    midvein?.centre ?? [],
+    base,
+    leafLength,
+    midvein?.centre[0]?.halfWidth ?? FINEST_WIDTH / 2,
   );
-  return { ...outline, veins, petiole: petiole(base, leafLength, midvein) };
+  veins.sort((p, q) => p.halfWidth - q.halfWidth);
+  return { ...outline, veins, petiole: stalk };
 };
 
 /**
- * The leaf stalk: a gentle curve down from the base, continuing the midvein and
- * tapering slightly before a small swelling where it would join the stem. It
- * starts a little inside the blade, so it overlaps the midvein and the margin
- * rather than butting against them.
+ * The leaf stalk, continuing the midvein out of the base. It starts a short way
+ * up the midvein, following its centre line exactly so the two overlap without
+ * a seam, leaves the initial vein node in the midvein's own direction and with
+ * its width, then bends smoothly to hang a little to one side, swelling
+ * slightly where it would join the stem.
  */
-const petiole = (
+export const petiole = (
+  /** The midvein's centre line, starting at the initial vein node. */
+  midvein: readonly RibbonPoint[],
+  /** Where the petiole hangs from if there is no midvein yet. */
   base: { x: number; y: number },
   leafLength: number,
   halfWidth: number,
-): RibbonPoint[] =>
-  Array.from({ length: 15 }, (_, k) => {
-    const t = -0.15 + (1.15 * k) / 14;
-    const below = Math.max(0, t);
-    const swelling = t > 0.85 ? 1 + 2.2 * (t - 0.85) : 1;
+): RibbonPoint[] => {
+  const root = midvein[0] ?? { ...base, halfWidth };
+  // The overlap: the midvein's first stretch, walked back toward the root.
+  const inside: RibbonPoint[] = [];
+  let walked = 0;
+  for (let k = 1; k < midvein.length && walked < 0.06 * leafLength; k++) {
+    const [p, q] = [midvein[k - 1], midvein[k]];
+    if (p === undefined || q === undefined) break;
+    walked += Math.sqrt((q.x - p.x) ** 2 + (q.y - p.y) ** 2);
+    inside.unshift(q);
+  }
+  // The direction the midvein leaves its root in (its first segment's, as the
+  // smoothed centre line starts), reversed to point down the stalk.
+  const next = midvein.find((p) => p.x !== root.x || p.y !== root.y);
+  const [dx, dy] = next === undefined ? [0, -1] : [next.x - root.x, next.y - root.y];
+  const norm = Math.sqrt(dx * dx + dy * dy) || 1;
+  const [ux, uy] = [-dx / norm, -dy / norm];
+  const length = PETIOLE_LENGTH * leafLength;
+  // A cubic Bézier: tangent to the midvein at the root, hanging nearly straight down at the end.
+  const p1 = { x: root.x + ux * 0.4 * length, y: root.y + uy * 0.4 * length };
+  const p3 = { x: root.x + 0.035 * leafLength, y: root.y + length };
+  const p2 = { x: p3.x - 0.01 * leafLength, y: p3.y - 0.4 * length };
+  const outside = Array.from({ length: 13 }, (_, k) => {
+    const t = k / 12;
+    const s = 1 - t;
+    const [a, b, c, d] = [s * s * s, 3 * s * s * t, 3 * s * t * t, t * t * t];
     return {
-      x: base.x + 0.035 * leafLength * below * below,
-      y: base.y + PETIOLE_LENGTH * leafLength * t,
-      halfWidth: Math.max(0.5, halfWidth * (1.05 - 0.3 * below) * swelling),
+      x: a * root.x + b * p1.x + c * p2.x + d * p3.x,
+      y: a * root.y + b * p1.y + c * p2.y + d * p3.y,
+      halfWidth: halfWidth * (t > 0.85 ? 1 + 1.6 * (t - 0.85) : 1),
     };
   });
+  return [...inside, ...outside];
+};
