@@ -4,7 +4,7 @@ import type { View } from "./view";
 
 /** Colours a style lends the interface, applied as CSS custom properties. */
 export interface StyleTheme {
-  /** Selected options, foil-stamped in this colour. */
+  /** Selected options, stamped in this colour. */
   readonly accent: string;
   /** Text on an accent background. */
   readonly onAccent: string;

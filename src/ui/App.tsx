@@ -144,19 +144,7 @@ export const App = () => {
         </p>
       </main>
 
-      <aside
-        class="panel"
-        onPointerMove={(event) => {
-          // Foil catches the light as the pointer moves across the panel.
-          const bounds = event.currentTarget.getBoundingClientRect();
-          const across = (event.clientX - bounds.left) / bounds.width;
-          const down = (event.clientY - bounds.top) / bounds.height;
-          event.currentTarget.style.setProperty(
-            "--sheen",
-            `${Math.round(160 * across + 60 * down)}px`,
-          );
-        }}
-      >
+      <aside class="panel">
         <h1>Leaf Venation</h1>
 
         <Section title="Style">
