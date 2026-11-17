@@ -61,21 +61,23 @@ export interface ToneImage {
 export const paintToneImage = (
   area: readonly { x: number; y: number }[],
   paint: (context: CanvasRenderingContext2D) => void,
+  /** Tone map pixels per screen pixel. */
+  scale = TONE_SCALE,
 ): ToneImage | undefined => {
   const xs = area.map((p) => p.x);
   const ys = area.map((p) => p.y);
   const [left, top] = [Math.min(...xs) - 4, Math.min(...ys) - 4];
-  const width = Math.ceil((Math.max(...xs) + 4 - left) * TONE_SCALE);
-  const height = Math.ceil((Math.max(...ys) + 4 - top) * TONE_SCALE);
+  const width = Math.ceil((Math.max(...xs) + 4 - left) * scale);
+  const height = Math.ceil((Math.max(...ys) + 4 - top) * scale);
   if (!(width > 0 && height > 0)) return undefined;
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
+  const context = canvas.getContext("2d");
   if (context === null) return undefined;
-  context.setTransform(TONE_SCALE, 0, 0, TONE_SCALE, -left * TONE_SCALE, -top * TONE_SCALE);
+  context.setTransform(scale, 0, 0, scale, -left * scale, -top * scale);
   paint(context);
-  return { canvas, left, top, scale: TONE_SCALE };
+  return { canvas, left, top, scale: scale };
 };
 
 /** Reads darkness from a tone map at screen positions. */
@@ -143,62 +145,54 @@ export interface ToneParts {
 
 const allParts: ToneParts = { form: true, folds: true, relief: true };
 
-/** Paints the blade's tones (see `bladeTone`), or only some parts of them, into a tone map. */
+/**
+ * Paints the blade's tones (see `bladeTone`), or only some parts of them, into
+ * a tone map, starting from a `neutral` darkness. The broad parts (the form and
+ * the folds) are soft enough to paint at half the tone map's resolution, which
+ * saves most of the work; each vein's crisp relief goes on top at full
+ * resolution.
+ */
 export const paintBladeTone =
-  (leaf: PreparedLeaf, blade: Path2D, parts: ToneParts = allParts) =>
+  (leaf: PreparedLeaf, blade: Path2D, parts: ToneParts = allParts, neutral = 0) =>
   (context: CanvasRenderingContext2D) => {
     context.clip(blade, "evenodd");
     const length = leaf.leafLength;
-    const { x, y } = leaf.base;
-    if (parts.form) {
-      // A mid tone overall, a little lighter toward the light.
-      const light = context.createLinearGradient(x - 0.5 * length, y, x + 0.5 * length, y);
-      light.addColorStop(0, "rgba(0, 0, 0, 0.42)");
-      light.addColorStop(1, "rgba(0, 0, 0, 0.3)");
-      context.fillStyle = light;
-      context.fill(blade);
-
-      // Toward the margin the blade curves away from the light.
-      const band = new Path2D();
-      traceRibbon(band, ribbon(closedLine(leaf.blade, 0.025 * length)));
-      fillShadowOnly(context, band, "rgba(0, 0, 0, 0.55)", 0.04 * length);
-    }
-
     const widest = leaf.veins.reduce((max, v) => Math.max(max, v.halfWidth), 0.3);
-    for (const { group, halfWidth } of groupByWidth(leaf.veins, 6)) {
-      if (group.length === 0) continue;
+    const groups = groupByWidth(leaf.veins, 6).flatMap(({ group, halfWidth }) => {
+      if (group.length === 0) return [];
       const path = new Path2D();
       for (const vein of group) traceRibbon(path, ribbon(vein.centre));
-      // The blade folds gently along each vein, more broadly along wider ones: shade
-      // spreads from the vein across the side away from the light, fading with
-      // distance, and light across the other. Smearing the shadow over several
-      // offsets gives a graded fold rather than a displaced copy of the veins.
-      const fold = 0.09 * length * (halfWidth / widest);
-      if (parts.folds && fold > 3) {
-        for (let k = 1; k <= 4; k++) {
-          const reach = (fold * k) / 4;
-          const blur = 2 + 0.5 * reach;
-          fillShadowAt(
-            context,
-            path,
-            "rgba(0, 0, 0, 0.13)",
-            blur,
-            -LIGHT.x * reach,
-            -LIGHT.y * reach,
-          );
-          context.globalCompositeOperation = "destination-out";
-          fillShadowAt(
-            context,
-            path,
-            "rgba(0, 0, 0, 0.15)",
-            blur,
-            LIGHT.x * reach,
-            LIGHT.y * reach,
-          );
-          context.globalCompositeOperation = "source-over";
-        }
+      return [{ path, halfWidth }];
+    });
+    const fill = (target: CanvasRenderingContext2D, alpha: number) => {
+      target.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+      target.fill(blade);
+    };
+
+    if (parts.form || parts.folds) {
+      const broad = paintToneImage(
+        leaf.blade,
+        (coarse) => {
+          coarse.clip(blade, "evenodd");
+          if (neutral > 0) fill(coarse, neutral);
+          if (parts.form) paintForm(coarse, leaf, blade);
+          if (parts.folds) {
+            for (const { path, halfWidth } of groups)
+              paintFold(coarse, path, length, halfWidth / widest);
+          }
+        },
+        TONE_SCALE / 2,
+      );
+      if (broad !== undefined) {
+        const { canvas, left, top, scale } = broad;
+        context.drawImage(canvas, left, top, canvas.width / scale, canvas.height / scale);
       }
-      if (!parts.relief) continue;
+    } else if (neutral > 0) {
+      fill(context, neutral);
+    }
+
+    if (!parts.relief) return;
+    for (const { path, halfWidth } of groups) {
       // Veins stand proud: crisp shade beside each on the side away from the light, light on the other.
       const reach = 1.4 + 2 * halfWidth;
       const blur = 1.5 + 2.5 * halfWidth;
@@ -208,6 +202,45 @@ export const paintBladeTone =
       context.globalCompositeOperation = "source-over";
     }
   };
+
+/** A mid tone overall, a little lighter toward the light, and the margin curving away from it. */
+const paintForm = (context: CanvasRenderingContext2D, leaf: PreparedLeaf, blade: Path2D) => {
+  const length = leaf.leafLength;
+  const { x, y } = leaf.base;
+  const light = context.createLinearGradient(x - 0.5 * length, y, x + 0.5 * length, y);
+  light.addColorStop(0, "rgba(0, 0, 0, 0.42)");
+  light.addColorStop(1, "rgba(0, 0, 0, 0.3)");
+  context.fillStyle = light;
+  context.fill(blade);
+  const band = new Path2D();
+  traceRibbon(band, ribbon(closedLine(leaf.blade, 0.025 * length)));
+  fillShadowOnly(context, band, "rgba(0, 0, 0, 0.55)", 0.04 * length);
+};
+
+/**
+ * The blade folds gently along each vein, more broadly along wider ones
+ * (`relativeWidth` is the veins' width as a fraction of the widest): shade
+ * spreads from the vein across the side away from the light, fading with
+ * distance, and light across the other. Smearing the shadow over several
+ * offsets gives a graded fold rather than a displaced copy of the veins.
+ */
+const paintFold = (
+  context: CanvasRenderingContext2D,
+  veins: Path2D,
+  length: number,
+  relativeWidth: number,
+) => {
+  const fold = 0.09 * length * relativeWidth;
+  if (fold <= 3) return;
+  for (let k = 1; k <= 4; k++) {
+    const reach = (fold * k) / 4;
+    const blur = 2 + 0.5 * reach;
+    fillShadowAt(context, veins, "rgba(0, 0, 0, 0.13)", blur, -LIGHT.x * reach, -LIGHT.y * reach);
+    context.globalCompositeOperation = "destination-out";
+    fillShadowAt(context, veins, "rgba(0, 0, 0, 0.15)", blur, LIGHT.x * reach, LIGHT.y * reach);
+    context.globalCompositeOperation = "source-over";
+  }
+};
 
 /** Gentle undulations of the blade, as a height field over the leaf (lengths in leaf lengths). */
 export const surface = (x: number, y: number) =>
@@ -240,23 +273,39 @@ export const leafLattice = (
   leaf: PreparedLeaf,
   spacing: number,
   seed: number,
-  visit: (x: number, y: number, i: number, j: number) => void,
+  visit: (x: number, y: number, i: number, j: number, index: number) => void,
 ): void => {
-  const { bounds, view, bladeScale } = leaf;
-  const step = spacing / view.scale;
+  const { view, bladeScale } = leaf;
+  const { step, columns, firstRow, rows, minX } = latticeGrid(leaf, spacing);
   const shown = bladeScale * bladeScale;
+  for (let j = firstRow; j < firstRow + rows; j++) {
+    for (let i = 0; i < columns; i++) {
+      if (hash2(i, j, seed) >= shown) continue;
+      const u = minX + (i + hash2(i, j, seed + 1)) * step;
+      const v = (j + hash2(i, j, seed + 2)) * step;
+      visit(
+        toScreenX(view, u * bladeScale),
+        toScreenY(view, v * bladeScale),
+        i,
+        j,
+        (j - firstRow) * columns + i,
+      );
+    }
+  }
+};
+
+/**
+ * The lattice behind `leafLattice`, fixed in the final leaf's coordinates.
+ * Its size, `columns × rows`, bounds the dense `index` given to each visit,
+ * which stays with the same mark for as long as the view is unchanged.
+ */
+export const latticeGrid = ({ bounds, view }: PreparedLeaf, spacing: number) => {
+  const step = spacing / view.scale;
   const columns = Math.ceil((bounds.maxX - bounds.minX) / step);
   // Rows reach below the base, to cover the petiole.
   const firstRow = Math.floor(Math.min(bounds.minY, -0.2 * (bounds.maxY - bounds.minY)) / step);
-  const lastRow = Math.ceil(bounds.maxY / step);
-  for (let j = firstRow; j <= lastRow; j++) {
-    for (let i = 0; i < columns; i++) {
-      if (hash2(i, j, seed) >= shown) continue;
-      const u = bounds.minX + (i + hash2(i, j, seed + 1)) * step;
-      const v = (j + hash2(i, j, seed + 2)) * step;
-      visit(toScreenX(view, u * bladeScale), toScreenY(view, v * bladeScale), i, j);
-    }
-  }
+  const rows = Math.ceil(bounds.maxY / step) - firstRow + 1;
+  return { step, columns, firstRow, rows, minX: bounds.minX };
 };
 
 /**

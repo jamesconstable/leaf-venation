@@ -23,11 +23,7 @@ const GAIN = 1.5;
 
 /** One part of the tone, painted over a neutral half tone so that light shows as well as shade. */
 const partImage = (leaf: PreparedLeaf, blade: Path2D, parts: ToneParts, neutral: number) =>
-  paintToneImage(leaf.blade, (context) => {
-    context.fillStyle = `rgba(0, 0, 0, ${neutral})`;
-    context.fillRect(-1e5, -1e5, 2e5, 2e5);
-    paintBladeTone(leaf, blade, parts)(context);
-  });
+  paintToneImage(leaf.blade, paintBladeTone(leaf, blade, parts, neutral));
 
 const alphas = (canvas: HTMLCanvasElement) =>
   canvas.getContext("2d")?.getImageData(0, 0, canvas.width, canvas.height).data;

@@ -1,5 +1,6 @@
 import type { Polygon } from "../../geometry/region";
 import { drawGhost, fillShadowOnly, polygonPath } from "../canvas";
+import { drawDots, type Dots } from "../dots";
 import { hash2 } from "../noise";
 import { ribbon, traceRibbon, type RibbonPoint } from "../ribbon";
 import type { PreparedLeaf, Style } from "../style";
@@ -7,6 +8,7 @@ import {
   bladeTone,
   closedLine,
   curl,
+  latticeGrid,
   leafLattice,
   paintTone,
   petioleEdges,
@@ -25,6 +27,7 @@ import {
  */
 
 const INK = "#241a14";
+const INK_RGB = [0x24, 0x1a, 0x14] as const;
 const PAPER = "#f3e9d3";
 
 /** Half the margin's pen width, which the petiole's outline shares. */
@@ -66,6 +69,23 @@ const SPACING = 1.4;
  */
 export const INK_CURL = 0.08;
 
+/**
+ * The curl at each stipple mark, by its lattice index. A mark keeps its place
+ * on the leaf as it grows, so its curl never changes; caching it saves
+ * evaluating the noise surface for every mark on every frame. Kept until the
+ * view or the random seed of the marks changes.
+ */
+let curlCache: { key: string; values: Float32Array } | undefined;
+const curlValues = (leaf: PreparedLeaf, seed: number) => {
+  const { bounds, view } = leaf;
+  const key = [seed, view.scale, bounds.minX, bounds.minY, bounds.maxX, bounds.maxY].join();
+  if (curlCache?.key !== key) {
+    const { columns, rows } = latticeGrid(leaf, SPACING);
+    curlCache = { key, values: new Float32Array(columns * rows).fill(Number.NaN) };
+  }
+  return curlCache.values;
+};
+
 /** Stipples where the tone is dark, on the shared lattice (so the tone holds as the leaf grows). */
 const stipple = (
   context: CanvasRenderingContext2D,
@@ -76,23 +96,22 @@ const stipple = (
   onBlade: boolean,
 ) => {
   const length = leaf.leafLength || 1;
-  const dots = new Path2D();
-  leafLattice(leaf, SPACING, seed, (x, y, i, j) => {
-    const d = onBlade
-      ? Math.max(
-          0.08,
-          darkness(x, y) + curl((x - leaf.base.x) / length, (y - leaf.base.y) / length, INK_CURL),
-        )
-      : darkness(x, y);
+  const curls = curlValues(leaf, seed);
+  const dots: Dots = [];
+  leafLattice(leaf, SPACING, seed, (x, y, i, j, index) => {
+    let d = darkness(x, y);
+    if (onBlade) {
+      let c = curls[index] ?? 0;
+      if (Number.isNaN(c)) {
+        c = curl((x - leaf.base.x) / length, (y - leaf.base.y) / length, INK_CURL);
+        curls[index] = c;
+      }
+      d = Math.max(0.08, d + c);
+    }
     if (d <= 0.03 || hash2(i, j, seed + 3) > d) return;
-    const radius = 0.45 + 0.3 * d;
-    dots.moveTo(x + radius, y);
-    dots.arc(x, y, radius, 0, 2 * Math.PI);
+    dots.push(x, y, 0.45 + 0.3 * d);
   });
-  context.fillStyle = INK;
-  context.globalAlpha = 0.92;
-  context.fill(dots);
-  context.globalAlpha = 1;
+  drawDots(context, dots, INK_RGB, 0.92);
 };
 
 const drawVeins = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
