@@ -203,6 +203,15 @@ const paintAtmosphere = (
   context.globalAlpha = 0.75;
   context.fillStyle = shade;
   context.fillRect(0, 0, width, height);
+  // Sky through gaps in the canopy, mostly away from the sun, toward the right.
+  if (backdrop.sky !== undefined) {
+    for (let n = 0; n < 7; n++) {
+      const x = (0.55 + 0.5 * next()) * width;
+      const y = (0.15 + 0.8 * next()) * height;
+      radial(x, y, size * (0.1 + next() * 0.14), backdrop.sky, 0.75 + 0.25 * next());
+    }
+  }
+  context.globalAlpha = 0.75;
   const vignette = context.createRadialGradient(
     width / 2,
     height * 0.4,

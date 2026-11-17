@@ -33,6 +33,8 @@ export type Backdrop =
       readonly foliage: readonly string[];
       /** Bokeh highlights. */
       readonly lights: readonly string[];
+      /** Sky showing through gaps in the canopy, if any. */
+      readonly sky?: string;
     }
   | {
       readonly kind: "paper";

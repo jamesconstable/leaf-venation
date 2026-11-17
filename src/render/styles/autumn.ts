@@ -13,14 +13,20 @@ import { leafLattice } from "./drawing";
  * and small spots of decay appear.
  */
 
-/** Lingering green beside the veins. */
-const tint = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
+/** Red flushing in from the margin, and green lingering well out from the main veins. */
+const tint = (context: CanvasRenderingContext2D, leaf: PreparedLeaf, blade: Path2D) => {
+  const length = leaf.leafLength;
+  const outside = new Path2D();
+  outside.rect(-1e5, -1e5, 2e5, 2e5);
+  outside.addPath(blade);
+  fillShadowOnlyEvenOdd(context, outside, "rgba(186, 30, 14, 0.85)", 0.09 * length);
+  fillShadowOnlyEvenOdd(context, outside, "rgba(170, 20, 12, 0.7)", 0.03 * length);
   const veins = new Path2D();
   for (const vein of leaf.veins) {
     if (vein.order > 2) continue;
-    traceRibbon(veins, ribbon(vein.centre.map((p) => ({ ...p, halfWidth: p.halfWidth * 4 }))));
+    traceRibbon(veins, ribbon(vein.centre.map((p) => ({ ...p, halfWidth: p.halfWidth * 7 }))));
   }
-  fillShadowOnly(context, veins, "rgba(118, 148, 36, 0.75)", 0.02 * leaf.leafLength);
+  fillShadowOnly(context, veins, "rgba(118, 148, 36, 0.8)", 0.045 * length);
 };
 
 /**
@@ -60,16 +66,18 @@ export const autumn: Style = {
     cardEdge: "rgba(120, 70, 30, 0.25)",
     text: "#2a1a10",
     muted: "#7a5f4a",
-    stage: "#3a1a0a",
+    stage: "#3a3a52",
   },
+  // Hazy light through a turning canopy, with cold sky showing between the leaves.
   backdrop: {
     kind: "bokeh",
-    deep: "#1e0c06",
-    mid: "#5a2a10",
-    bright: "#f3c26a",
-    cool: "#5e4a24",
-    foliage: ["#2a1006", "#5a200c", "#8a3a12", "#c0601c", "#e09a34"],
-    lights: ["#ffe0a0", "#ffd080", "#ffc070", "#fff2d0"],
+    deep: "#2c3456",
+    mid: "#86788a",
+    bright: "#fae6c0",
+    cool: "#3f9ccc",
+    foliage: ["#463a5c", "#c0542a", "#e08634", "#f2b04a", "#ffd27a"],
+    lights: ["#fff0d4", "#ffc870", "#86cbea", "#ffffff"],
+    sky: "#6fb4dc",
   },
   overlay: { source: "#2d5fb8", kill: "rgba(220, 235, 255, 0.55)", node: "#3a1606" },
   drawLeaf: backlitLeaf({
