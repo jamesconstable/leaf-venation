@@ -43,6 +43,11 @@ export type Backdrop =
       readonly vignette: string;
       /** Ruled like graph paper: fine lines `spacing` pixels apart, every fifth one heavier. */
       readonly grid?: { readonly minor: string; readonly major: string; readonly spacing: number };
+      /** An uneven watercolour wash over the paper, between its lightest and darkest pigment. */
+      readonly wash?: {
+        readonly light: readonly [number, number, number];
+        readonly dark: readonly [number, number, number];
+      };
     };
 
 /** A vein, ready to draw: its smoothed centre line in screen coordinates. */

@@ -6,7 +6,7 @@ import {
   pinnedPattern,
   polygonPath,
 } from "../canvas";
-import { tileableNoise } from "../noise";
+import { tileableCells, tileableNoise } from "../noise";
 import { ribbon, traceRibbon } from "../ribbon";
 import type { PreparedLeaf, Style } from "../style";
 
@@ -18,6 +18,7 @@ import type { PreparedLeaf, Style } from "../style";
  */
 
 const PAPER = "#1d4479";
+const MESOPHYLL = 512;
 
 /** Uneven exposure through the blade: soft patches where more light came through. */
 let exposure: HTMLCanvasElement | undefined;
@@ -35,6 +36,31 @@ const exposureTexture = () =>
         image.data[i + 3] = Math.round(
           255 * Math.min(1, Math.max(0, 0.3 + 0.6 * broad + 0.25 * fine - 0.3)),
         );
+      }
+    }
+    context.putImageData(image, 0, 0);
+  }));
+
+/**
+ * The ghost of the mesophyll: cell walls printed faintly pale, more clearly in
+ * some places than others, as the blade's thickness varied.
+ */
+let mesophyll: HTMLCanvasElement | undefined;
+const mesophyllTexture = () =>
+  (mesophyll ??= makeTexture(MESOPHYLL, MESOPHYLL, (context, width, height) => {
+    const image = context.createImageData(width, height);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const { f1, f2 } = tileableCells(x, y, width, height, 7, 57);
+        const wall = Math.max(0, 1 - (f2 - f1) / 1.8) ** 1.5;
+        const patch = tileableNoise(x, y, width, height, 70, 4, 58);
+        const speckle = tileableNoise(x, y, width, height, 2, 2, 59);
+        const shown = Math.min(1, Math.max(0, 2.2 * (patch - 0.42))) * (0.6 + 0.8 * speckle);
+        const i = 4 * (y * width + x);
+        image.data[i] = 236;
+        image.data[i + 1] = 244;
+        image.data[i + 2] = 255;
+        image.data[i + 3] = Math.round(255 * Math.min(1, 0.5 * wall * shown));
       }
     }
     context.putImageData(image, 0, 0);
@@ -68,6 +94,13 @@ const drawLeaf = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
   outside.rect(-1e5, -1e5, 2e5, 2e5);
   outside.addPath(blade);
   fillShadowOnlyEvenOdd(context, outside, "rgba(60, 104, 170, 0.45)", 0.04 * length);
+  const cells = pinnedPattern(context, mesophyllTexture(), leaf.base, length / 600);
+  if (cells !== null) {
+    context.fillStyle = cells;
+    context.fill(blade);
+  }
+  // Just inside the edge, a narrow halo where light crept under the margin.
+  fillShadowOnlyEvenOdd(context, outside, "rgba(236, 244, 255, 0.6)", 0.006 * length + 1.5);
 
   // Veins blocked the most light: soft white halos, then nearly white cores.
   const halos = new Path2D();
@@ -107,6 +140,7 @@ export const cyanotype: Style = {
     paper: PAPER,
     fibre: "#6f93c4",
     vignette: "rgba(6, 20, 48, 0.65)",
+    wash: { light: [44, 92, 156], dark: [16, 46, 98] },
   },
   overlay: { source: "#ffd166", kill: "rgba(255, 255, 255, 0.45)", node: "#ffffff" },
   drawLeaf,

@@ -1,7 +1,7 @@
 import type { Polygon } from "../geometry/region";
 import { boxBlur } from "./blur";
 import { makeTexture } from "./canvas";
-import { scatter, tileableNoise } from "./noise";
+import { fractalNoise, scatter, tileableNoise } from "./noise";
 import type { Backdrop } from "./style";
 
 type PaperBackdrop = Extract<Backdrop, { kind: "paper" }>;
@@ -34,7 +34,52 @@ const paperGrain = (backdrop: PaperBackdrop) => {
   return tile;
 };
 
-/** Paper: a flat ground, grain, scattered fibres, an optional grid and a gentle vignette. */
+/**
+ * An uneven watercolour wash: pigment pooled in broad blotches, with darker
+ * tide lines where the edges of pools dried. Painted at a third of the screen's
+ * resolution; the browser smooths it as it scales up.
+ */
+const paintWash = (
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  { light, dark }: NonNullable<PaperBackdrop["wash"]>,
+) => {
+  const scale = 1 / 3;
+  const wash = makeTexture(
+    Math.max(1, Math.ceil(width * scale)),
+    Math.max(1, Math.ceil(height * scale)),
+    (washContext, w, h) => {
+      const image = washContext.createImageData(w, h);
+      for (let j = 0; j < h; j++) {
+        for (let i = 0; i < w; i++) {
+          const [x, y] = [i / scale, j / scale];
+          const pool = fractalNoise(x / 260, y / 260, 5, 71);
+          const grain = fractalNoise(x / 30, y / 30, 3, 73);
+          const tide =
+            Math.exp(-(((pool - 0.56) / 0.02) ** 2)) +
+            0.6 * Math.exp(-(((pool - 0.43) / 0.025) ** 2));
+          const pigment = Math.min(
+            1,
+            Math.max(0, 0.5 + 1.5 * (pool - 0.5) + 0.35 * (grain - 0.5) + 0.18 * tide),
+          );
+          const k = 4 * (j * w + i);
+          for (let c = 0; c < 3; c++) {
+            image.data[k + c] = Math.round(
+              (light[c] ?? 0) + ((dark[c] ?? 0) - (light[c] ?? 0)) * pigment,
+            );
+          }
+          image.data[k + 3] = 255;
+        }
+      }
+      washContext.putImageData(image, 0, 0);
+    },
+  );
+  context.imageSmoothingQuality = "high";
+  context.drawImage(wash, 0, 0, wash.width / scale, wash.height / scale);
+};
+
+/** Paper: a flat ground (or a wash), grain, scattered fibres, an optional grid and a gentle vignette. */
 export const paintPaper = (
   context: CanvasRenderingContext2D,
   width: number,
@@ -43,6 +88,7 @@ export const paintPaper = (
 ): void => {
   context.fillStyle = backdrop.paper;
   context.fillRect(0, 0, width, height);
+  if (backdrop.wash !== undefined) paintWash(context, width, height, backdrop.wash);
   const grain = context.createPattern(paperGrain(backdrop), "repeat");
   if (grain !== null) {
     context.fillStyle = grain;
