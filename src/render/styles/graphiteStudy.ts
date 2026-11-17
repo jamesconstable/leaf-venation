@@ -83,7 +83,7 @@ const hatching = (leaf: PreparedLeaf, tone: Tone) => {
   const light = new Path2D();
   const firm = new Path2D();
   leafLattice(leaf, 2.6, 71, (x, y, i, j) => {
-    const d = tone(x, y) + curl((x - leaf.base.x) / length, (y - leaf.base.y) / length);
+    const d = tone(x, y) + curl((x - leaf.base.x) / length, (y - leaf.base.y) / length, 0.16);
     if (hash2(i, j, 74) > 1.6 * (d - 0.3)) return;
     const half = 1.8 + 3 * d * hash2(i, j, 76) + 1.5 * d;
     const angle = HATCH + 0.18 * (hash2(i, j, 75) - 0.5);

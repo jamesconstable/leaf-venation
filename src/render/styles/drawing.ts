@@ -218,13 +218,13 @@ export const surface = (x: number, y: number) =>
  * slopes away from the light, lighter where it faces it. Positions are relative
  * to the base in leaf lengths, so the undulations grow with the leaf.
  */
-export const curl = (x: number, y: number) => {
+export const curl = (x: number, y: number, strength: number) => {
   const step = 0.02;
   const slope =
     (surface(x - LIGHT.x * step, y - LIGHT.y * step) -
       surface(x + LIGHT.x * step, y + LIGHT.y * step)) /
     (2 * step);
-  return 0.16 * slope;
+  return strength * slope;
 };
 
 /**

@@ -1,6 +1,7 @@
 import { polygonPath } from "../canvas";
 import { ribbon, traceRibbon } from "../ribbon";
 import type { PreparedLeaf, Style } from "../style";
+import { INK_CURL } from "./botanicalInk";
 import { curl, LIGHT, paintBladeTone, paintToneImage, type ToneParts } from "./drawing";
 
 /**
@@ -88,7 +89,8 @@ const drawLeaf = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
       const k = 4 * (j * canvas.width + i);
       const [x, y] = [left + (i + 0.5) / scale, top + (j + 0.5) / scale];
       const darkness =
-        (f[k + 3] ?? 0) / 255 + curl((x - leaf.base.x) / length, (y - leaf.base.y) / length);
+        (f[k + 3] ?? 0) / 255 +
+        curl((x - leaf.base.x) / length, (y - leaf.base.y) / length, INK_CURL);
       image.data[k] = channel(0.5 - GAIN * ((r[k + 3] ?? 0) / 255 - 0.5));
       image.data[k + 1] = channel(0.5 - GAIN * ((g[k + 3] ?? 0) / 255 - 0.5));
       // Centred on the blade's typical tone.

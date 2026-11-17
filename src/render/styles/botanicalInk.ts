@@ -59,6 +59,13 @@ const reliefTone = (lines: readonly RibbonPoint[][]) =>
 /** About this many pixels between candidate dots, whatever the leaf's size. */
 const SPACING = 1.4;
 
+/**
+ * How strongly the blade's curl shades it. Any stronger and it swamps the
+ * shading from the veins, tilting the whole blade dark on one side and light on
+ * the other.
+ */
+export const INK_CURL = 0.08;
+
 /** Stipples where the tone is dark, on the shared lattice (so the tone holds as the leaf grows). */
 const stipple = (
   context: CanvasRenderingContext2D,
@@ -74,7 +81,7 @@ const stipple = (
     const d = onBlade
       ? Math.max(
           0.08,
-          darkness(x, y) + curl((x - leaf.base.x) / length, (y - leaf.base.y) / length),
+          darkness(x, y) + curl((x - leaf.base.x) / length, (y - leaf.base.y) / length, INK_CURL),
         )
       : darkness(x, y);
     if (d <= 0.03 || hash2(i, j, seed + 3) > d) return;
