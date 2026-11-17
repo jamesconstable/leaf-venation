@@ -186,7 +186,7 @@ export const BOKEH_LAYERS = [
 ] as const;
 
 /** Where the light comes from, as a fraction of the layer's width and height, for a centred stage. */
-const SOURCE = { x: 0.56, y: 0.1 };
+const SOURCE = { x: 0.5, y: 0.1 };
 
 /**
  * A layer's composition, shifted sideways so it centres on the visible stage:
