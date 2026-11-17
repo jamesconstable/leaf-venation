@@ -262,7 +262,7 @@ export const livingCells = (leaf: PreparedLeaf) => {
 
   // Veins claim the pixels nearest them, so cells stop at their edges.
   for (const p of veinPoints(leaf)) {
-    splat(p.x, p.y, 0.75 * SPACING, (p.halfWidth + 1) ** 2, true);
+    splat(p.x, p.y, p.halfWidth + 1.5, (p.halfWidth + 1) ** 2, true);
   }
   // Buckets as large as a cell's reach, so every vein a cell could meet is found.
   const nearby = bucketed(veinSegments(leaf), REACH * SPACING);
