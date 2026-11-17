@@ -118,6 +118,10 @@ Caching each stipple mark's curl seemed to save nothing, which wrongly suggested
 
 The first leaf zoom drew the leaf into a larger frame. Lines stayed sharp, but every mark sized in screen pixels (stipple dots, pen widths, cell textures) stayed the same size, so zooming in showed a denser, finer drawing rather than a closer look at the same one. It was also slow, since ink stippled the whole enlarged leaf, offscreen parts included. Magnifying through the canvas's transform instead enlarges everything together and keeps vector marks sharp. The remaining work was in the bitmaps styles paint offscreen (tone maps, the summer lighting, the living cells): these now cover only the visible area and follow the magnification, up to a limit for the costliest.
 
+### Cells shaped by veins: remove the sites, and wall off the veins
+
+To make mesophyll cells end at veins rather than lie across them, three fixes fell short in turn. Shrinking cell sites near a vein let cells from the far side spill across. Pushing sites off veins piled them up between closely spaced fine veins, leaving gaps the veins filled. Walling each cell off from its nearest vein still let veins slice through cells, because each wall was a single 3-pixel piece of vein and cells simply reached around its ends. What worked was the user's suggestion from Worley noise, removing (here, fading out) the sites nearest a vein so their neighbours' walls meet along it, combined with walls that follow the vein for a cell's whole reach. Zooming in on fine veins with the cells made opaque, and drawing the veins the cell code actually used, was what finally exposed the problem.
+
 ### A reactive framework can reset an input before you read it
 
 Our slider kept a "draft" value while dragging. On release, the handler cleared the draft and then read the input's value. But clearing the draft made SolidJS synchronously re-render the input with the old value, so every slider silently ignored the user. The unit tests didn't cover the UI; a browser check found it within minutes.
