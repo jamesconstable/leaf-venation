@@ -131,23 +131,38 @@ export const fillShadowAt = (
 export const bladeTone = (leaf: PreparedLeaf, blade: Path2D) =>
   paintTone(leaf.blade, paintBladeTone(leaf, blade));
 
-/** Paints the blade's tones (see `bladeTone`) into a tone map. */
+/** The separate contributions to the blade's tones, for looking at one at a time. */
+export interface ToneParts {
+  /** The overall tone, and the margin curving away from the light. */
+  readonly form: boolean;
+  /** Broad, gentle folds along the veins. */
+  readonly folds: boolean;
+  /** Crisp shade and light beside each vein, which stands proud of the blade. */
+  readonly relief: boolean;
+}
+
+const allParts: ToneParts = { form: true, folds: true, relief: true };
+
+/** Paints the blade's tones (see `bladeTone`), or only some parts of them, into a tone map. */
 export const paintBladeTone =
-  (leaf: PreparedLeaf, blade: Path2D) => (context: CanvasRenderingContext2D) => {
+  (leaf: PreparedLeaf, blade: Path2D, parts: ToneParts = allParts) =>
+  (context: CanvasRenderingContext2D) => {
     context.clip(blade, "evenodd");
     const length = leaf.leafLength;
     const { x, y } = leaf.base;
-    // A mid tone overall, a little lighter toward the light.
-    const light = context.createLinearGradient(x - 0.5 * length, y, x + 0.5 * length, y);
-    light.addColorStop(0, "rgba(0, 0, 0, 0.42)");
-    light.addColorStop(1, "rgba(0, 0, 0, 0.3)");
-    context.fillStyle = light;
-    context.fill(blade);
+    if (parts.form) {
+      // A mid tone overall, a little lighter toward the light.
+      const light = context.createLinearGradient(x - 0.5 * length, y, x + 0.5 * length, y);
+      light.addColorStop(0, "rgba(0, 0, 0, 0.42)");
+      light.addColorStop(1, "rgba(0, 0, 0, 0.3)");
+      context.fillStyle = light;
+      context.fill(blade);
 
-    // Toward the margin the blade curves away from the light.
-    const band = new Path2D();
-    traceRibbon(band, ribbon(closedLine(leaf.blade, 0.025 * length)));
-    fillShadowOnly(context, band, "rgba(0, 0, 0, 0.55)", 0.04 * length);
+      // Toward the margin the blade curves away from the light.
+      const band = new Path2D();
+      traceRibbon(band, ribbon(closedLine(leaf.blade, 0.025 * length)));
+      fillShadowOnly(context, band, "rgba(0, 0, 0, 0.55)", 0.04 * length);
+    }
 
     const widest = leaf.veins.reduce((max, v) => Math.max(max, v.halfWidth), 0.3);
     for (const { group, halfWidth } of groupByWidth(leaf.veins, 6)) {
@@ -159,7 +174,7 @@ export const paintBladeTone =
       // distance, and light across the other. Smearing the shadow over several
       // offsets gives a graded fold rather than a displaced copy of the veins.
       const fold = 0.09 * length * (halfWidth / widest);
-      if (fold > 3) {
+      if (parts.folds && fold > 3) {
         for (let k = 1; k <= 4; k++) {
           const reach = (fold * k) / 4;
           const blur = 2 + 0.5 * reach;
@@ -183,6 +198,7 @@ export const paintBladeTone =
           context.globalCompositeOperation = "source-over";
         }
       }
+      if (!parts.relief) continue;
       // Veins stand proud: crisp shade beside each on the side away from the light, light on the other.
       const reach = 1.4 + 2 * halfWidth;
       const blur = 1.5 + 2.5 * halfWidth;

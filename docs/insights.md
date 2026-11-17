@@ -102,6 +102,10 @@ Pulling shared code out of the approved styles risked changing how they look, in
 
 The leaf's cell texture was laid down before the soft shadows beside the veins, which then hid it. Applied after the shadows with an `overlay` blend, the same texture modulates whatever is beneath it, so the cell walls carry on through the shaded bands.
 
+### Measure each lighting term before tuning any of them
+
+The ink style's tone is the sum of several terms: an overall gradient and the margin curving away, folds along the veins, each vein's relief, and the "curl" (slopes of a noise surface). A debug style showing each term in its own colour channel, all at one gain, revealed that the curl swamps the rest. It swings darkness by ±0.35 or more across the blade, against about ±0.06 for the folds and the gradient. At its scale the noise surface is a single broad tilt, so it alone makes the dark left half and bright right half, including the bright patch where fine veins fade. Folding along every vein had seemed to fix the yin-and-yang look, but the curl brought back a milder version of it.
+
 ### A reactive framework can reset an input before you read it
 
 Our slider kept a "draft" value while dragging. On release, the handler cleared the draft and then read the input's value. But clearing the draft made SolidJS synchronously re-render the input with the old value, so every slider silently ignored the user. The unit tests didn't cover the UI; a browser check found it within minutes.
