@@ -381,6 +381,13 @@ input[type="range"]:focus-visible {
   accent-color: var(--accent);
 }
 
+.toggle-note {
+  margin-left: auto;
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--muted);
+}
+
 .seed-row,
 .button-row {
   display: flex;

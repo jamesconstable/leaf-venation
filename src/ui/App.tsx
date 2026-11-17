@@ -11,6 +11,7 @@ import { SimulationClient } from "../worker/simulationClient";
 import { Backdrop } from "./Backdrop";
 import { Choice, Section, Slider, Toggle } from "./controls";
 import { LeafCanvas } from "./LeafCanvas";
+import { resolveOverlays, setByStyle, type ChosenOverlays } from "./overlayChoice";
 import { StyleSwatches } from "./StyleSwatches";
 
 const newRandomSeed = () => Math.random().toString(36).slice(2, 8);
@@ -42,7 +43,13 @@ export const App = () => {
 
   // Render settings: changing these redraws without restarting.
   const [style, setStyle] = createSignal<Style>(defaultStyle);
-  const [overlays, setOverlays] = createSignal<Overlays>({ auxinSources: true, veinNodes: false });
+  const [chosenOverlays, setChosenOverlays] = createSignal<ChosenOverlays>({});
+  const overlays = createMemo(() => resolveOverlays(style(), chosenOverlays()));
+  const overlayToggle = (key: keyof Overlays) => ({
+    checked: overlays()[key],
+    note: setByStyle(style(), chosenOverlays(), key) ? "Switched on by this style" : undefined,
+    onChange: (checked: boolean) => setChosenOverlays({ ...chosenOverlays(), [key]: checked }),
+  });
   const [veinWidthExponent, setVeinWidthExponent] = createSignal(2);
 
   // Playback.
@@ -154,11 +161,7 @@ export const App = () => {
             blade={config()?.blade}
             snapshot={snapshot()}
             veinWidthExponent={veinWidthExponent()}
-            onSelect={(chosen) => {
-              setStyle(chosen);
-              const suggested = chosen.suggestedOverlays;
-              if (suggested !== undefined) setOverlays({ ...overlays(), ...suggested });
-            }}
+            onSelect={setStyle}
           />
         </Section>
 
@@ -296,16 +299,8 @@ export const App = () => {
         </Section>
 
         <Section title="Display" open={false}>
-          <Toggle
-            label="Auxin sources"
-            checked={overlays().auxinSources}
-            onChange={(auxinSources) => setOverlays({ ...overlays(), auxinSources })}
-          />
-          <Toggle
-            label="Vein nodes"
-            checked={overlays().veinNodes}
-            onChange={(veinNodes) => setOverlays({ ...overlays(), veinNodes })}
-          />
+          <Toggle label="Auxin sources" {...overlayToggle("auxinSources")} />
+          <Toggle label="Vein nodes" {...overlayToggle("veinNodes")} />
           <Slider
             label="Vein width exponent"
             value={veinWidthExponent()}
