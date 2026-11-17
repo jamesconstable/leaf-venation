@@ -114,6 +114,10 @@ Timing ink's phases with `performance.now()` pointed at the wrong culprits at fi
 
 Caching each stipple mark's curl seemed to save nothing, which wrongly suggested the curl wasn't costly. In fact the cache never hit: the vein stipple pass asked for it with a different random seed, evicting the blade's entry every frame. Fetching it only for the blade took ink from 38 ms to 29 ms a frame. Each blurred shadow fill also turned out to have a high fixed cost, regardless of the canvas's resolution, so painting folds with two wide offsets instead of four narrow ones saved more than halving their resolution had.
 
+### Zoom by magnifying the drawing, not by redrawing it bigger
+
+The first leaf zoom drew the leaf into a larger frame. Lines stayed sharp, but every mark sized in screen pixels (stipple dots, pen widths, cell textures) stayed the same size, so zooming in showed a denser, finer drawing rather than a closer look at the same one. It was also slow, since ink stippled the whole enlarged leaf, offscreen parts included. Magnifying through the canvas's transform instead enlarges everything together and keeps vector marks sharp. The remaining work was in the bitmaps styles paint offscreen (tone maps, the summer lighting, the living cells): these now cover only the visible area and follow the magnification, up to a limit for the costliest.
+
 ### A reactive framework can reset an input before you read it
 
 Our slider kept a "draft" value while dragging. On release, the handler cleared the draft and then read the input's value. But clearing the draft made SolidJS synchronously re-render the input with the old value, so every slider silently ignored the user. The unit tests didn't cover the UI; a browser check found it within minutes.

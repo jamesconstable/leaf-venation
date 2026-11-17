@@ -28,6 +28,7 @@ Each milestone is developed on its own branch with small, logical commits; tests
 - Living mesophyll cells: a prototype in spring green; decide whether to keep them, tune them, and extend them to the other styles with cell textures.
 - Ink style: the finest veins fade into the brightest parts of the blade. Raising the stipple floor flattened the contrast, and stronger or wider shade beside narrow veins made them look lumpy. The lighting debug style shows the curl term dominates the tone (see insights), so taming it is the next thing to try.
 - Remove the temporary lighting debug style before going public.
+- Leaf zoom: check pinching and dragging on a touch screen, and the controls on narrow screens; zooming spring green below 2× (about 50 ms a frame) and deep summer (about 100 ms at 4×) could be quicker.
 - Autumn's backdrop needs more experimenting: lighter and hazier, closer to the reference photo.
 - Spring green, autumn: the petiole looks wider and paler than the midvein where it overlaps it inside the blade.
 - Damage and skeletonisation as a setting for every style.
