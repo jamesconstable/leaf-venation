@@ -31,8 +31,8 @@ export const App = () => {
   // Simulation parameters: changing any of these restarts the simulation.
   const [outlineId, setOutlineId] = createSignal(leafOutlines[0]?.id ?? "");
   const [venation, setVenation] = createSignal<Venation>("open");
-  const [killDistance, setKillDistance] = createSignal(0.04);
-  const [birthDistance, setBirthDistance] = createSignal(0.05);
+  const [killDistance, setKillDistance] = createSignal(0.005);
+  const [birthDistance, setBirthDistance] = createSignal(0.02);
   const [dartDensity, setDartDensity] = createSignal(300);
   const [growthType, setGrowthType] = createSignal<Growth["type"]>("marginal");
   const [initialSize, setInitialSize] = createSignal(0.2);
@@ -184,7 +184,7 @@ export const App = () => {
               setVenation(value);
               // Closed patterns need the smallest kill distance (the paper uses one vein
               // segment length); with a large one they look just like open patterns.
-              setKillDistance(value === "closed" ? 0 : 0.04);
+              setKillDistance(value === "closed" ? 0 : 0.005);
             }}
           />
         </Section>
