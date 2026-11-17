@@ -2,6 +2,7 @@ import { createEffect, createSignal, For, Match, onCleanup, onMount, Switch } fr
 import type { Polygon } from "../geometry/region";
 import { BOKEH_LAYERS, paintBokehLayer, paintPaper } from "../render/backdrops";
 import type { Backdrop as BackdropSpec } from "../render/style";
+import { stageCentre } from "./layout";
 
 /**
  * What lies behind the leaf: layers of out-of-focus foliage that drift slowly
@@ -33,7 +34,9 @@ export const Backdrop = (props: { backdrop: BackdropSpec; outline: Polygon }) =>
       canvas.height = Math.max(1, Math.round(height * 1.15 * settings.resolution));
       const context = canvas.getContext("2d");
       if (context !== null) {
-        paintBokehLayer(context, canvas.width, canvas.height, backdrop, layer, outline);
+        // The layer overscans by 7.5% each side, so the stage's centre sits a little nearer its middle.
+        const centre = (stageCentre(width) + 0.075) / 1.15;
+        paintBokehLayer(context, canvas.width, canvas.height, backdrop, layer, outline, centre);
       }
     });
   };
@@ -48,7 +51,7 @@ export const Backdrop = (props: { backdrop: BackdropSpec; outline: Polygon }) =>
       const context = canvas.getContext("2d");
       if (context === null) return;
       context.scale(ratio, ratio);
-      paintPaper(context, width, height, backdrop);
+      paintPaper(context, width, height, backdrop, stageCentre(width));
     });
   };
 

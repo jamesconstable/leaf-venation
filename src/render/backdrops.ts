@@ -115,6 +115,8 @@ export const paintPaper = (
   width: number,
   height: number,
   backdrop: PaperBackdrop,
+  /** Where the middle of the visible stage lies, as a fraction of the width. */
+  centre = 0.5,
 ): void => {
   context.fillStyle = backdrop.paper;
   context.fillRect(0, 0, width, height);
@@ -172,10 +174,10 @@ export const paintPaper = (
   }
 
   const vignette = context.createRadialGradient(
-    width / 2,
+    width * centre,
     height / 2,
     Math.min(width, height) * 0.25,
-    width / 2,
+    width * centre,
     height / 2,
     Math.hypot(width, height) * 0.6,
   );
@@ -197,8 +199,17 @@ export const BOKEH_LAYERS = [
   { resolution: 1 / 3, blur: 3, seed: 4 }, // highlights, blended with "screen"
 ] as const;
 
-/** Where the light comes from, as a fraction of the layer's width and height. */
+/** Where the light comes from, as a fraction of the layer's width and height, for a centred stage. */
 const SOURCE = { x: 0.56, y: 0.1 };
+
+/**
+ * A layer's composition, shifted sideways so it centres on the visible stage:
+ * `shift` is added to horizontal positions given as fractions of the width.
+ */
+interface Composition {
+  readonly shift: number;
+  readonly source: { readonly x: number; readonly y: number };
+}
 
 type Next = () => number;
 
@@ -237,6 +248,7 @@ const paintAtmosphere = (
   backdrop: BokehBackdrop,
   outline: Polygon,
   next: Next,
+  { shift, source }: Composition,
 ) => {
   const size = Math.max(width, height);
   context.fillStyle = backdrop.mid;
@@ -250,7 +262,7 @@ const paintAtmosphere = (
     context.fillRect(0, 0, width, height);
     context.globalAlpha = 1;
   };
-  radial(0.06 * width, 0.95 * height, 0.7 * size, backdrop.cool, 0.85);
+  radial((0.06 + shift) * width, 0.95 * height, 0.7 * size, backdrop.cool, 0.85);
   // Soft masses of distant foliage, mostly toward the bottom and sides.
   for (let n = 0; n < 9; n++) {
     const side = next() < 0.5 ? next() * 0.25 : 0.75 + next() * 0.25;
@@ -259,18 +271,18 @@ const paintAtmosphere = (
     fillLeafShape(
       context,
       outline,
-      side * width,
+      (side + shift) * width,
       (0.35 + next() * 0.75) * height,
       size * (0.35 + next() * 0.4),
       next() * Math.PI * 2,
     );
   }
   context.globalAlpha = 1;
-  radial(SOURCE.x * width, SOURCE.y * height, 0.8 * size, backdrop.bright, 0.9);
+  radial(source.x * width, source.y * height, 0.8 * size, backdrop.bright, 0.9);
   // Soft, dim discs of light filtering through, thickest near the source.
   for (let n = 0; n < 40; n++) {
-    const x = (SOURCE.x + 0.28 * gaussian(next)) * width;
-    const y = (SOURCE.y + 0.3 * Math.abs(gaussian(next))) * height;
+    const x = (source.x + 0.28 * gaussian(next)) * width;
+    const y = (source.y + 0.3 * Math.abs(gaussian(next))) * height;
     radial(x, y, size * (0.03 + next() * 0.06), pick(backdrop.lights, next, "white"), 0.25);
   }
   const shade = context.createLinearGradient(0, 0.45 * height, 0, height);
@@ -282,17 +294,17 @@ const paintAtmosphere = (
   // Sky through gaps in the canopy, mostly away from the sun, toward the right.
   if (backdrop.sky !== undefined) {
     for (let n = 0; n < 7; n++) {
-      const x = (0.55 + 0.5 * next()) * width;
+      const x = (0.55 + shift + 0.5 * next()) * width;
       const y = (0.15 + 0.8 * next()) * height;
       radial(x, y, size * (0.1 + next() * 0.14), backdrop.sky, 0.75 + 0.25 * next());
     }
   }
   context.globalAlpha = 0.75;
   const vignette = context.createRadialGradient(
-    width / 2,
+    width * (0.5 + shift),
     height * 0.4,
     size * 0.35,
-    width / 2,
+    width * (0.5 + shift),
     height * 0.4,
     size * 0.8,
   );
@@ -311,10 +323,11 @@ const paintBranches = (
   backdrop: BokehBackdrop,
   outline: Polygon,
   next: Next,
+  { shift, source }: Composition,
 ) => {
   const size = Math.max(width, height);
   for (let branch = 0; branch < 5; branch++) {
-    let x = (-0.1 + next() * 1.2) * width;
+    let x = (-0.1 + shift + next() * 1.2) * width;
     let y = -0.05 * height;
     let angle = Math.PI / 2 + (next() - 0.5) * 1.6;
     const steps = 14 + Math.floor(next() * 14);
@@ -329,7 +342,7 @@ const paintBranches = (
         const leafY = y + Math.sin(angle + sideways * 1.1) * reach;
         const lit = Math.max(
           0,
-          1 - Math.hypot(leafX / width - SOURCE.x, (leafY / height - SOURCE.y) * 1.3) / 0.75,
+          1 - Math.hypot(leafX / width - source.x, (leafY / height - source.y) * 1.3) / 0.75,
         );
         const shade = Math.min(
           backdrop.foliage.length - 1,
@@ -359,6 +372,7 @@ const paintFraming = (
   backdrop: BokehBackdrop,
   outline: Polygon,
   next: Next,
+  { shift }: Composition,
 ) => {
   const size = Math.max(width, height);
   const spots = [
@@ -373,7 +387,7 @@ const paintFraming = (
     fillLeafShape(
       context,
       outline,
-      (fx + (next() - 0.5) * 0.1) * width,
+      (fx + shift + (next() - 0.5) * 0.1) * width,
       (fy + (next() - 0.5) * 0.1) * height,
       size * (0.22 + next() * 0.12),
       next() * Math.PI * 2,
@@ -389,13 +403,14 @@ const paintHighlights = (
   height: number,
   backdrop: BokehBackdrop,
   next: Next,
+  { source }: Composition,
 ) => {
   const size = Math.max(width, height);
   for (let n = 0; n < 70; n++) {
     const clustered = next() < 0.75;
-    const fx = clustered ? SOURCE.x + 0.24 * gaussian(next) : next();
-    const fy = clustered ? SOURCE.y + 0.28 * Math.abs(gaussian(next)) : next();
-    const nearness = Math.max(0, 1 - Math.hypot(fx - SOURCE.x, fy - SOURCE.y) / 0.9);
+    const fx = clustered ? source.x + 0.24 * gaussian(next) : next();
+    const fy = clustered ? source.y + 0.28 * Math.abs(gaussian(next)) : next();
+    const nearness = Math.max(0, 1 - Math.hypot(fx - source.x, fy - source.y) / 0.9);
     const [x, y] = [fx * width, fy * height];
     const r = size * (0.006 + next() * 0.026);
     const colour = pick(backdrop.lights, next, "white");
@@ -425,23 +440,27 @@ export const paintBokehLayer = (
   backdrop: BokehBackdrop,
   layer: number,
   outline: Polygon,
+  /** Where the middle of the visible stage lies, as a fraction of the layer's width. */
+  centre = 0.5,
 ): void => {
   const settings = BOKEH_LAYERS[layer];
   if (settings === undefined) return;
   const next = scatter(settings.seed * 31);
+  const shift = centre - 0.5;
+  const composition = { shift, source: { x: SOURCE.x + shift, y: SOURCE.y } };
   context.clearRect(0, 0, width, height);
   switch (layer) {
     case 0:
-      paintAtmosphere(context, width, height, backdrop, outline, next);
+      paintAtmosphere(context, width, height, backdrop, outline, next, composition);
       break;
     case 1:
-      paintBranches(context, width, height, backdrop, outline, next);
+      paintBranches(context, width, height, backdrop, outline, next, composition);
       break;
     case 2:
-      paintFraming(context, width, height, backdrop, outline, next);
+      paintFraming(context, width, height, backdrop, outline, next, composition);
       break;
     default:
-      paintHighlights(context, width, height, backdrop, next);
+      paintHighlights(context, width, height, backdrop, next, composition);
   }
   const image = context.getImageData(0, 0, width, height);
   boxBlur(image.data, width, height, settings.blur);
