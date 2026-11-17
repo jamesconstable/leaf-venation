@@ -1,4 +1,5 @@
 import { hash2 } from "../noise";
+import type { RibbonPoint } from "../ribbon";
 import type { PreparedLeaf } from "../style";
 import { leafLattice } from "./drawing";
 
@@ -7,8 +8,8 @@ import { leafLattice } from "./drawing";
  * every frame (a prototype). Each cell grows around a site fixed to the leaf on
  * the shared lattice, so cells travel with the leaf as it grows; as the leaf
  * enlarges, new sites appear between the old ones and swell into place, like
- * cells dividing. Veins act as walls: cells stop at them, and a cell whose site
- * a vein approaches shrinks away, its neighbours reshaping around the vein.
+ * cells dividing. Veins act as walls: a cell can't reach across the veins
+ * nearest its site, so as a vein approaches, cells reshape to end along it.
  *
  * The cells form a power diagram (a weighted Voronoi diagram), in which points
  * along the veins also take part, so cells end where veins begin. Rather than
@@ -20,6 +21,8 @@ import { leafLattice } from "./drawing";
 const SPACING = 8;
 /** How far a site reaches, in spacings: enough to meet its neighbours. */
 const REACH = 1.3;
+/** How far sites step off a vein they lie on, from its edge, in spacings. */
+const CLEARANCE = 0.2;
 /** How the newest sites start: shrunk by this many spacings, squared. */
 const NEWBORN = 0.9;
 
@@ -35,6 +38,76 @@ const veinPoints = (leaf: PreparedLeaf) => {
     }
   }
   return points;
+};
+
+/** A short straight piece of a vein, placed in buckets by its midpoint. */
+interface Segment {
+  readonly x: number;
+  readonly y: number;
+  readonly ax: number;
+  readonly ay: number;
+  readonly bx: number;
+  readonly by: number;
+  readonly halfWidth: number;
+}
+
+/** The veins as short segments, about three pixels long, along their centre lines. */
+const veinSegments = (leaf: PreparedLeaf): Segment[] =>
+  leaf.veins.flatMap(({ centre }) => {
+    const kept: RibbonPoint[] = [];
+    centre.forEach((p, k) => {
+      const last = kept.at(-1);
+      if (
+        last === undefined ||
+        k === centre.length - 1 ||
+        Math.hypot(p.x - last.x, p.y - last.y) >= 3
+      ) {
+        kept.push(p);
+      }
+    });
+    return kept.slice(1).map((b, k) => {
+      const a = kept[k] ?? b;
+      return {
+        x: (a.x + b.x) / 2,
+        y: (a.y + b.y) / 2,
+        ax: a.x,
+        ay: a.y,
+        bx: b.x,
+        by: b.y,
+        halfWidth: (a.halfWidth + b.halfWidth) / 2,
+      };
+    });
+  });
+
+/** A vein segment's line, as a wall: a cell may only claim pixels on its own site's side. */
+interface Barrier {
+  readonly ax: number;
+  readonly ay: number;
+  /** The line's normal, pointing toward the site's side. */
+  readonly nx: number;
+  readonly ny: number;
+}
+
+const barrier = ({ ax, ay, bx, by }: Segment, x: number, y: number): Barrier => {
+  const length = Math.hypot(bx - ax, by - ay) || 1;
+  let [nx, ny] = [-(by - ay) / length, (bx - ax) / length];
+  if ((x - ax) * nx + (y - ay) * ny < 0) [nx, ny] = [-nx, -ny];
+  return { ax, ay, nx, ny };
+};
+
+/** Whether (x, y) lies on the far side of a barrier from its site. */
+const behind = ({ ax, ay, nx, ny }: Barrier, x: number, y: number) =>
+  (x - ax) * nx + (y - ay) * ny < 0;
+
+/** The point on a segment nearest (x, y). */
+const nearestOn = ({ ax, ay, bx, by }: Segment, x: number, y: number) => {
+  const [dx, dy] = [bx - ax, by - ay];
+  const lengthSquared = dx * dx + dy * dy;
+  const t =
+    lengthSquared === 0
+      ? 0
+      : Math.min(1, Math.max(0, ((x - ax) * dx + (y - ay) * dy) / lengthSquared));
+  return { x: ax + t * dx, y: ay + t * dy };
 };
 
 /** A grid of points in square buckets, for finding the points near a position. */
@@ -70,8 +143,16 @@ export const livingCells = (leaf: PreparedLeaf) => {
   const first = new Float32Array(width * height).fill(Infinity);
   const second = new Float32Array(width * height).fill(Infinity);
   const ofVein = new Uint8Array(width * height);
-  const splat = (x: number, y: number, reach: number, weight: number, vein: boolean) => {
+  const splat = (
+    x: number,
+    y: number,
+    reach: number,
+    weight: number,
+    vein: boolean,
+    barriers: readonly Barrier[] = [],
+  ) => {
     const [cx, cy] = [x - left, y - top];
+    const [b0, b1] = barriers;
     const i0 = Math.max(0, Math.floor(cx - reach));
     const i1 = Math.min(width - 1, Math.ceil(cx + reach));
     const j0 = Math.max(0, Math.floor(cy - reach));
@@ -80,6 +161,12 @@ export const livingCells = (leaf: PreparedLeaf) => {
       const dy = py + 0.5 - cy;
       for (let px = i0; px <= i1; px++) {
         const dx = px + 0.5 - cx;
+        if (
+          (b0 !== undefined && behind(b0, px + 0.5 + left, py + 0.5 + top)) ||
+          (b1 !== undefined && behind(b1, px + 0.5 + left, py + 0.5 + top))
+        ) {
+          continue;
+        }
         const d = dx * dx + dy * dy - weight;
         const k = py * width + px;
         const f1 = first[k] ?? Infinity;
@@ -95,22 +182,64 @@ export const livingCells = (leaf: PreparedLeaf) => {
   };
 
   // Veins claim the pixels nearest them, so cells stop at their edges.
-  const points = veinPoints(leaf);
-  for (const p of points) splat(p.x, p.y, 0.75 * SPACING, (p.halfWidth + 0.5) ** 2, true);
-  const nearby = bucketed(points, SPACING);
-
+  for (const p of veinPoints(leaf)) {
+    splat(p.x, p.y, 0.75 * SPACING, (p.halfWidth + 1) ** 2, true);
+  }
+  const nearby = bucketed(veinSegments(leaf), SPACING);
+  interface Near {
+    segment: Segment;
+    x: number;
+    y: number;
+    gap: number;
+  }
+  /**
+   * The nearest vein segment to (x, y), and the nearest on another stretch of
+   * vein (more than a few pixels from the first), if any.
+   */
+  const nearestVeins = (x: number, y: number): Near[] => {
+    let first: Near | undefined;
+    const candidates: Near[] = [];
+    nearby(x, y, (segment) => {
+      const p = nearestOn(segment, x, y);
+      const near = {
+        segment,
+        x: p.x,
+        y: p.y,
+        gap: Math.hypot(p.x - x, p.y - y) - segment.halfWidth,
+      };
+      candidates.push(near);
+      if (first === undefined || near.gap < first.gap) first = near;
+    });
+    if (first === undefined) return [];
+    const nearest: Near = first;
+    let other: Near | undefined;
+    for (const near of candidates) {
+      if (Math.hypot(near.x - nearest.x, near.y - nearest.y) <= 4) continue;
+      if (other === undefined || near.gap < other.gap) other = near;
+    }
+    return other === undefined ? [nearest] : [nearest, other];
+  };
   const shown = leaf.bladeScale * leaf.bladeScale;
   leafLattice(leaf, SPACING, 91, (x, y, i, j) => {
     // Sites ranked just below the cut-off are newborn; they grow in as the leaf does.
     const age = Math.min(1, (shown - hash2(i, j, 91)) / (0.25 * shown));
-    // A site close to a vein is crowded out by it.
-    let gap = Infinity;
-    nearby(x, y, (p) => {
-      gap = Math.min(gap, Math.hypot(p.x - x, p.y - y) - p.halfWidth);
-    });
-    const crowding = Math.min(1, Math.max(0, 1 - gap / (0.4 * SPACING)));
-    const shrink = Math.max(1 - age, crowding);
-    splat(x, y, REACH * SPACING, -SPACING * SPACING * NEWBORN * shrink, false);
+    // A site right on a vein steps a little off it, on whichever side it lies.
+    let [sx, sy] = [x, y];
+    let veins = nearestVeins(x, y);
+    const [nearest] = veins;
+    if (nearest !== undefined && nearest.gap < CLEARANCE * SPACING) {
+      const distance = Math.hypot(x - nearest.x, y - nearest.y);
+      const [ux, uy] =
+        distance > 1e-6 ? [(x - nearest.x) / distance, (y - nearest.y) / distance] : [1, 0];
+      const to = nearest.segment.halfWidth + CLEARANCE * SPACING;
+      [sx, sy] = [nearest.x + ux * to, nearest.y + uy * to];
+      veins = nearestVeins(sx, sy);
+    }
+    // Its cell can't reach across the veins nearest it.
+    const barriers = veins
+      .filter((p) => p.gap < REACH * SPACING)
+      .map((p) => barrier(p.segment, sx, sy));
+    splat(sx, sy, REACH * SPACING, -SPACING * SPACING * NEWBORN * (1 - age), false, barriers);
   });
 
   const out = document.createElement("canvas");
