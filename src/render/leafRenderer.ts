@@ -1,4 +1,4 @@
-import type { Region } from "../geometry/region";
+import type { BoundingBox, Region } from "../geometry/region";
 import type { VenationSnapshot } from "../simulation/snapshot";
 import { drawOverlays, type Overlays } from "./overlays";
 import { prepareLeaf, type Frame } from "./prepare";
@@ -29,8 +29,19 @@ export const renderLeaf = (
   scene: Scene,
   settings: RenderSettings,
   frame: Frame,
+  /** The visible part of the canvas, so styles can skip work offscreen when zoomed in. */
+  viewport?: BoundingBox,
+  /** How far the canvas's transform magnifies the picture. */
+  magnification = 1,
 ): void => {
-  const leaf = prepareLeaf(scene.blade, scene.snapshot, frame, settings.veinWidthExponent);
+  const leaf = prepareLeaf(
+    scene.blade,
+    scene.snapshot,
+    frame,
+    settings.veinWidthExponent,
+    viewport,
+    magnification,
+  );
   settings.style.drawLeaf(context, leaf, styleOptionValues(settings.style, settings.styleOptions));
   if (scene.snapshot !== undefined) {
     drawOverlays(

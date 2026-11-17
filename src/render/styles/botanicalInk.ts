@@ -16,6 +16,8 @@ import {
   petioleEdges,
   shifted,
   wobble,
+  toneScale,
+  visibleArea,
   type CurlNoise,
   type Tone,
   type ToneSettings,
@@ -53,15 +55,19 @@ const reliefLines = (leaf: PreparedLeaf) => {
 };
 
 /** Shade along the side of each relief ribbon facing away from the light. */
-const reliefTone = (lines: readonly RibbonPoint[][]) =>
-  paintTone(lines.flat(), (context) => {
-    for (const line of lines) {
-      const path = new Path2D();
-      traceRibbon(path, ribbon(shifted(line, -0.75, 0.4)));
-      const halfWidth = line.reduce((max, p) => Math.max(max, p.halfWidth), 0);
-      fillShadowOnly(context, path, "rgba(0, 0, 0, 0.7)", 0.3 + 0.4 * halfWidth);
-    }
-  });
+const reliefTone = (leaf: PreparedLeaf, lines: readonly RibbonPoint[][]) =>
+  paintTone(
+    visibleArea(leaf, lines.flat()),
+    (context) => {
+      for (const line of lines) {
+        const path = new Path2D();
+        traceRibbon(path, ribbon(shifted(line, -0.75, 0.4)));
+        const halfWidth = line.reduce((max, p) => Math.max(max, p.halfWidth), 0);
+        fillShadowOnly(context, path, "rgba(0, 0, 0, 0.7)", 0.3 + 0.4 * halfWidth);
+      }
+    },
+    toneScale(leaf),
+  );
 
 /** The stipple's settings, adjustable as style options. */
 interface Stippling {
@@ -340,7 +346,7 @@ const drawLeaf = (
   drawPetiole(context, leaf.petiole, leaf.blade);
   // Model the midvein and petiole: stipple their shadow sides, within their own outlines.
   const lines = reliefLines(leaf);
-  const relief = reliefTone(lines);
+  const relief = reliefTone(leaf, lines);
   if (relief !== undefined) {
     const within = new Path2D();
     for (const line of lines) traceRibbon(within, ribbon(line));

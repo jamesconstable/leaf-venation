@@ -82,6 +82,16 @@ export interface PreparedLeaf {
   readonly petiole: readonly RibbonPoint[];
   /** The leaf's base, in screen coordinates. */
   readonly base: { readonly x: number; readonly y: number };
+  /**
+   * The part of the screen that can be seen, when zoomed in so far that much of
+   * the leaf is off screen; styles may skip work outside it.
+   */
+  readonly viewport?: BoundingBox;
+  /**
+   * How far the picture is magnified on screen (by the canvas's transform), so
+   * bitmaps painted offscreen can match the screen's resolution.
+   */
+  readonly magnification: number;
 }
 
 /** A setting a style offers in the options panel: a switch, or a number on a slider. */

@@ -2,7 +2,15 @@ import { polygonPath } from "../canvas";
 import { ribbon, traceRibbon } from "../ribbon";
 import { optionFlag, type PreparedLeaf, type Style, type StyleOptionValues } from "../style";
 import { INK_CURL } from "./botanicalInk";
-import { curl, LIGHT, paintBladeTone, paintToneImage, type ToneParts } from "./drawing";
+import {
+  curl,
+  LIGHT,
+  paintBladeTone,
+  paintToneImage,
+  toneScale,
+  visibleArea,
+  type ToneParts,
+} from "./drawing";
 
 /**
  * A temporary style for studying the drawing styles' lighting: each part of the
@@ -23,7 +31,11 @@ const GAIN = 1.5;
 
 /** One part of the tone, painted over a neutral half tone so that light shows as well as shade. */
 const partImage = (leaf: PreparedLeaf, blade: Path2D, parts: ToneParts, neutral: number) =>
-  paintToneImage(leaf.blade, paintBladeTone(leaf, blade, parts, neutral));
+  paintToneImage(
+    visibleArea(leaf, leaf.blade),
+    paintBladeTone(leaf, blade, parts, neutral),
+    toneScale(leaf),
+  );
 
 const alphas = (canvas: HTMLCanvasElement) =>
   canvas.getContext("2d")?.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -69,8 +81,9 @@ const drawLeaf = (
   const on = (id: string) => optionFlag(options, id, true);
   const blade = polygonPath(leaf.blade, leaf.bladeHoles);
   const form = paintToneImage(
-    leaf.blade,
+    visibleArea(leaf, leaf.blade),
     paintBladeTone(leaf, blade, { form: true, folds: false, relief: false }),
+    toneScale(leaf),
   );
   const folds = partImage(leaf, blade, { form: false, folds: true, relief: false }, 0.5);
   const relief = partImage(leaf, blade, { form: false, folds: false, relief: true }, 0.5);

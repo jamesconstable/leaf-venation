@@ -1,7 +1,7 @@
 import { hash2 } from "../noise";
 import type { RibbonPoint } from "../ribbon";
 import type { PreparedLeaf } from "../style";
-import { leafLattice } from "./drawing";
+import { leafLattice, visibleArea } from "./drawing";
 
 /**
  * Mesophyll cells that live on the leaf rather than lying over it, computed
@@ -20,7 +20,7 @@ import { leafLattice } from "./drawing";
 /** About this many pixels between cell sites. */
 const SPACING = 8;
 /** How far a site reaches, in spacings: enough to meet its neighbours. */
-const REACH = 1.3;
+const REACH = 1.4;
 /** How far sites step off a vein they lie on, from its edge, in spacings. */
 const CLEARANCE = 0.2;
 /** How the newest sites start: shrunk by this many spacings, squared. */
@@ -83,6 +83,10 @@ const veinSegments = (leaf: PreparedLeaf): Segment[] =>
 interface Barrier {
   readonly ax: number;
   readonly ay: number;
+  /** The segment's direction and length. */
+  readonly tx: number;
+  readonly ty: number;
+  readonly length: number;
   /** The line's normal, pointing toward the site's side. */
   readonly nx: number;
   readonly ny: number;
@@ -90,14 +94,22 @@ interface Barrier {
 
 const barrier = ({ ax, ay, bx, by }: Segment, x: number, y: number): Barrier => {
   const length = Math.hypot(bx - ax, by - ay) || 1;
-  let [nx, ny] = [-(by - ay) / length, (bx - ax) / length];
+  const [tx, ty] = [(bx - ax) / length, (by - ay) / length];
+  let [nx, ny] = [-ty, tx];
   if ((x - ax) * nx + (y - ay) * ny < 0) [nx, ny] = [-nx, -ny];
-  return { ax, ay, nx, ny };
+  return { ax, ay, tx, ty, length, nx, ny };
 };
 
-/** Whether (x, y) lies on the far side of a barrier from its site. */
-const behind = ({ ax, ay, nx, ny }: Barrier, x: number, y: number) =>
-  (x - ax) * nx + (y - ay) * ny < 0;
+/**
+ * Whether (x, y) lies on the far side of a barrier from its site. The barrier
+ * reaches only a little beyond its segment's ends, so it doesn't cut cells
+ * beyond where a vein stops.
+ */
+const behind = ({ ax, ay, tx, ty, length, nx, ny }: Barrier, x: number, y: number) => {
+  const along = (x - ax) * tx + (y - ay) * ty;
+  const beyond = 0.6 * SPACING;
+  return along > -beyond && along < length + beyond && (x - ax) * nx + (y - ay) * ny < 0;
+};
 
 /** The point on a segment nearest (x, y). */
 const nearestOn = ({ ax, ay, bx, by }: Segment, x: number, y: number) => {
@@ -131,13 +143,21 @@ const bucketed = <T extends { x: number; y: number }>(points: readonly T[], size
 
 /** The cells' shading, as a grey image over the blade, for blending onto it. */
 export const livingCells = (leaf: PreparedLeaf) => {
-  const xs = leaf.blade.map((p) => p.x);
-  const ys = leaf.blade.map((p) => p.y);
+  const area = visibleArea(leaf, leaf.blade, 2 * SPACING);
+  const xs = area.map((p) => p.x);
+  const ys = area.map((p) => p.y);
   if (xs.length === 0) return undefined;
   const [left, top] = [Math.floor(Math.min(...xs)), Math.floor(Math.min(...ys))];
-  const width = Math.ceil(Math.max(...xs)) - left + 1;
-  const height = Math.ceil(Math.max(...ys)) - top + 1;
+  // Pixels per screen unit: the screen's own resolution as it's magnified, up to a
+  // point; beyond that the soft-edged cells are simply scaled up.
+  const resolution = Math.min(leaf.magnification, 1.5);
+  const width = Math.ceil((Math.ceil(Math.max(...xs)) - left + 1) * resolution);
+  const height = Math.ceil((Math.ceil(Math.max(...ys)) - top + 1) * resolution);
   if (!(width > 0 && height > 0)) return undefined;
+  const [toX, toY] = [
+    (px: number) => left + px / resolution,
+    (py: number) => top + py / resolution,
+  ];
 
   // The nearest two power distances at each pixel, and whether the nearest is a vein.
   const first = new Float32Array(width * height).fill(Infinity);
@@ -151,7 +171,10 @@ export const livingCells = (leaf: PreparedLeaf) => {
     vein: boolean,
     barriers: readonly Barrier[] = [],
   ) => {
-    const [cx, cy] = [x - left, y - top];
+    // Into this image's pixels.
+    const [cx, cy] = [(x - left) * resolution, (y - top) * resolution];
+    reach *= resolution;
+    weight *= resolution * resolution;
     const [b0, b1] = barriers;
     const i0 = Math.max(0, Math.floor(cx - reach));
     const i1 = Math.min(width - 1, Math.ceil(cx + reach));
@@ -162,12 +185,14 @@ export const livingCells = (leaf: PreparedLeaf) => {
       for (let px = i0; px <= i1; px++) {
         const dx = px + 0.5 - cx;
         if (
-          (b0 !== undefined && behind(b0, px + 0.5 + left, py + 0.5 + top)) ||
-          (b1 !== undefined && behind(b1, px + 0.5 + left, py + 0.5 + top))
+          (b0 !== undefined && behind(b0, toX(px + 0.5), toY(py + 0.5))) ||
+          (b1 !== undefined && behind(b1, toX(px + 0.5), toY(py + 0.5)))
         ) {
           continue;
         }
-        const d = dx * dx + dy * dy - weight;
+        const squared = dx * dx + dy * dy;
+        if (squared > reach * reach) continue;
+        const d = squared - weight;
         const k = py * width + px;
         const f1 = first[k] ?? Infinity;
         if (d < f1) {
@@ -250,14 +275,15 @@ export const livingCells = (leaf: PreparedLeaf) => {
   for (let k = 0; k < first.length; k++) {
     const d1 = first[k] ?? Infinity;
     const d2 = second[k] ?? Infinity;
-    let value = 0.5;
+    // A typical cell interior, where no site reached.
+    let value = 0.54;
     if (Number.isFinite(d1)) {
       const f1 = Math.sqrt(Math.max(0, d1));
       const f2 = Number.isFinite(d2) ? Math.sqrt(Math.max(0, d2)) : Infinity;
       // Walls where two cells meet, or a cell meets a vein.
-      const wall = 1 - Math.min(1, (f2 - f1) / 2.2);
+      const wall = 1 - Math.min(1, (f2 - f1) / (2.2 * resolution));
       // Cells are darker toward their centres; a vein's own territory is even.
-      const centre = ofVein[k] === 1 ? 0.5 : Math.max(0, 1 - f1 / SPACING);
+      const centre = ofVein[k] === 1 ? 0.5 : Math.max(0, 1 - f1 / (SPACING * resolution));
       value = 0.5 + 0.28 * wall + 0.08 * (1 - centre);
     }
     const v = Math.round(255 * value);
@@ -267,5 +293,5 @@ export const livingCells = (leaf: PreparedLeaf) => {
     image.data[4 * k + 3] = 255;
   }
   context.putImageData(image, 0, 0);
-  return { canvas: out, left, top };
+  return { canvas: out, left, top, scale: resolution };
 };

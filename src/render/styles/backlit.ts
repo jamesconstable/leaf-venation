@@ -167,8 +167,9 @@ const drawCells = (
   if (look.livingCells === true) {
     const cells = livingCells(leaf);
     if (cells !== undefined) {
-      const { canvas, left, top } = cells;
-      context.drawImage(canvas, left, top, canvas.width, canvas.height);
+      const { canvas, left, top, scale } = cells;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(canvas, left, top, canvas.width / scale, canvas.height / scale);
     }
   } else {
     const cellPattern = pinnedPattern(context, cellTexture(), leaf.base, 1);

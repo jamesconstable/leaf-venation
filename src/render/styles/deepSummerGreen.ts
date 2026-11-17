@@ -5,7 +5,15 @@ import { valueNoise } from "../noise";
 import { ribbon, traceRibbon } from "../ribbon";
 import type { PreparedLeaf, Style } from "../style";
 import { lightFrom, reflect } from "../surfaceLight";
-import { closedLine, LIGHT, paintToneImage, shifted, type ToneImage } from "./drawing";
+import {
+  closedLine,
+  LIGHT,
+  paintToneImage,
+  shifted,
+  toneScale,
+  visibleArea,
+  type ToneImage,
+} from "./drawing";
 
 /**
  * A mature leaf at midsummer, lit from the front: thick, plump and hydrated,
@@ -16,6 +24,8 @@ import { closedLine, LIGHT, paintToneImage, shifted, type ToneImage } from "./dr
  */
 
 const SUN = lightFrom(LIGHT, 0.75);
+/** The most the lighting's resolution follows the zoom; beyond this it's scaled up. */
+const MAX_DETAIL = 2;
 /** The blade's colour in full light, and in shadow. */
 const LIT = [48, 148, 36] as const;
 const DEEP = [4, 38, 32] as const;
@@ -36,12 +46,16 @@ const coverage = (image: ToneImage) => {
 
 /** The blade's surface as heights, in tone map pixels, over the tone map's area. */
 const heights = (leaf: PreparedLeaf, blade: Path2D) => {
-  const area = leaf.blade;
+  const area = visibleArea(leaf, leaf.blade, 0.1 * leaf.leafLength + 48);
   const mask = (paint: (context: CanvasRenderingContext2D) => void) =>
-    paintToneImage(area, (context) => {
-      context.fillStyle = "black";
-      paint(context);
-    });
+    paintToneImage(
+      area,
+      (context) => {
+        context.fillStyle = "black";
+        paint(context);
+      },
+      toneScale(leaf, MAX_DETAIL),
+    );
   // Each vein creases the blade along its centre line, more deeply for wider
   // veins (by rank, not drawn width, so the vein width exponent matters little).
   const widest = leaf.veins.reduce((max, v) => Math.max(max, v.halfWidth), 0.3);
@@ -79,14 +93,16 @@ const heights = (leaf: PreparedLeaf, blade: Path2D) => {
   const { canvas, scale, left, top } = bladeImage;
   const [width, height] = [canvas.width, canvas.height];
   const length = leaf.leafLength * scale;
+  // Fine details are sized in tone map pixels at normal size; magnified, they grow with it.
+  const zoom = Math.min(leaf.magnification, MAX_DETAIL);
 
   const dome = coverage(bladeImage);
   blurField(dome, width, height, 0.05 * length);
   // A sharp crease, and the tissue folding gently down into it.
   const sharp = coverage(creaseImage);
   const fold = sharp.slice();
-  blurField(sharp, width, height, 1);
-  blurField(fold, width, height, 3);
+  blurField(sharp, width, height, zoom);
+  blurField(fold, width, height, 3 * zoom);
   const broad = coverage(mainImage);
   blurField(broad, width, height, 0.02 * length);
 
@@ -112,11 +128,11 @@ const heights = (leaf: PreparedLeaf, blade: Path2D) => {
       field[k] =
         0.06 * length * (dome[k] ?? 0) +
         shape -
-        3 * (sharp[k] ?? 0) -
-        9 * (fold[k] ?? 0) -
+        3 * zoom * (sharp[k] ?? 0) -
+        9 * zoom * (fold[k] ?? 0) -
         0.05 * length * (broad[k] ?? 0);
       // A gentle, fine pebbling of the surface, fixed to the leaf's base.
-      pebbles[k] = 0.2 * valueNoise(x / 3, y / 3, 7);
+      pebbles[k] = 0.2 * zoom * valueNoise(x / 3, y / 3, 7);
       edges[k] = Math.min(1, 2.5 * (fold[k] ?? 0) + margin);
     }
   }

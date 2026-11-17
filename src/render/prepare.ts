@@ -34,6 +34,9 @@ export const prepareLeaf = (
   snapshot: VenationSnapshot | undefined,
   frame: Frame,
   veinWidthExponent: number,
+  /** The visible part of the screen, if not the whole leaf. */
+  viewport?: BoundingBox,
+  magnification = 1,
 ): PreparedLeaf => {
   const leafHeight = blade.bounds.maxY - blade.bounds.minY;
   const view = frameView(
@@ -52,6 +55,8 @@ export const prepareLeaf = (
     ghost: bladeScale < 1 ? toScreen(blade.outer, view, 1) : undefined,
     leafLength,
     base,
+    magnification,
+    ...(viewport === undefined ? {} : { viewport }),
   };
   if (snapshot === undefined) {
     return { ...outline, veins: [], petiole: petiole([], base, leafLength, FINEST_WIDTH / 2) };

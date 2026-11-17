@@ -2,7 +2,7 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "so
 import { leafOutlines } from "../catalogue/leafOutlines";
 import { outlineRegion } from "../outline/outline";
 import { isStarShapedFrom } from "../outline/starShaped";
-import type { Overlays } from "../render/leafRenderer";
+import type { Frame, Overlays } from "../render/leafRenderer";
 import { styleOptionValues, type Style, type StyleOptionValues } from "../render/style";
 import { defaultStyle, styles } from "../render/styles";
 import { simulationConfig, type Growth, type Venation } from "../simulation/simulation";
@@ -13,6 +13,8 @@ import { Choice, Section, Slider, Toggle } from "./controls";
 import { LeafCanvas } from "./LeafCanvas";
 import { resolveOverlays, setByStyle, type ChosenOverlays } from "./overlayChoice";
 import { StyleSwatches } from "./StyleSwatches";
+import { noZoom, zoomAbout, type Zoom } from "./zoom";
+import { ZoomControls } from "./ZoomControls";
 
 const newRandomSeed = () => Math.random().toString(36).slice(2, 8);
 
@@ -58,6 +60,10 @@ export const App = () => {
   const chosenOptions = () => styleOptions()[style().id] ?? {};
   const chooseOption = (id: string, value: number | boolean) =>
     setStyleOptions({ ...styleOptions(), [style().id]: { ...chosenOptions(), [id]: value } });
+
+  // Zoom: only the leaf is magnified, not the page.
+  const [zoom, setZoom] = createSignal<Zoom>(noZoom);
+  const [stageFrame, setStageFrame] = createSignal<Frame>({ left: 0, top: 0, width: 1, height: 1 });
 
   // Playback.
   const [stepsPerFrame, setStepsPerFrame] = createSignal(2);
@@ -132,6 +138,9 @@ export const App = () => {
       <main class="stage">
         <Backdrop backdrop={style().backdrop} outline={blade()?.outer ?? []} />
         <LeafCanvas
+          zoom={zoom()}
+          onZoom={setZoom}
+          onFrame={setStageFrame}
           scene={{
             blade: config()?.blade ?? { outer: [], holes: [], bounds: emptyBounds, area: 0 },
             killDistance: config()?.killDistance ?? 0,
@@ -144,19 +153,30 @@ export const App = () => {
             styleOptions: chosenOptions(),
           }}
         />
-        <p class="caption" aria-live="polite">
-          <span>
-            <span class="caption-title">
-              {leafOutlines.find(({ id }) => id === outlineId())?.name}
+        <div class="corner">
+          <ZoomControls
+            zoom={zoom()}
+            onZoom={(scale) => {
+              const frame = stageFrame();
+              const centre = { x: frame.left + frame.width / 2, y: frame.top + frame.height / 2 };
+              setZoom(zoomAbout(frame, zoom(), scale, centre));
+            }}
+            onReset={() => setZoom(noZoom)}
+          />
+          <p class="caption" aria-live="polite">
+            <span>
+              <span class="caption-title">
+                {leafOutlines.find(({ id }) => id === outlineId())?.name}
+              </span>
+              {` · ${venation()} venation · ${growthNames[growthType()]}`}
             </span>
-            {` · ${venation()} venation · ${growthNames[growthType()]}`}
-          </span>
-          <span class="caption-status">
-            {snapshot() === undefined
-              ? "Starting…"
-              : `${statusLabels[snapshot()?.status ?? "growing"]} Step ${snapshot()?.stepCount ?? 0}, ${(snapshot()?.xs.length ?? 0).toLocaleString()} vein nodes`}
-          </span>
-        </p>
+            <span class="caption-status">
+              {snapshot() === undefined
+                ? "Starting…"
+                : `${statusLabels[snapshot()?.status ?? "growing"]} Step ${snapshot()?.stepCount ?? 0}, ${(snapshot()?.xs.length ?? 0).toLocaleString()} vein nodes`}
+            </span>
+          </p>
+        </div>
       </main>
 
       <aside class="panel">

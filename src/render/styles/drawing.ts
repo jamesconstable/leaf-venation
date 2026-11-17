@@ -48,6 +48,14 @@ export type Tone = (x: number, y: number) => number;
 
 const TONE_SCALE = 0.5;
 
+/**
+ * Tone map pixels per screen unit for a leaf: half the screen's resolution as
+ * it's magnified, up to `limit` times magnified (beyond which a soft tone map
+ * can simply be scaled up, saving the cost of ever larger maps).
+ */
+export const toneScale = (leaf: PreparedLeaf, limit = Infinity): number =>
+  TONE_SCALE * Math.min(leaf.magnification, limit);
+
 /** A tone map's canvas (darkness as alpha), and where its top left corner sits on screen. */
 export interface ToneImage {
   readonly canvas: HTMLCanvasElement;
@@ -56,6 +64,30 @@ export interface ToneImage {
   /** Tone map pixels per screen pixel. */
   readonly scale: number;
 }
+
+/**
+ * The screen area covering `points`, trimmed to the visible part of the screen
+ * (with a margin, so blurs near the edge aren't cut short). When zoomed in, this
+ * keeps offscreen work, such as tone maps, from growing with the zoom.
+ */
+export const visibleArea = (
+  leaf: PreparedLeaf,
+  points: readonly { x: number; y: number }[],
+  margin = 48,
+): { x: number; y: number }[] => {
+  const { viewport } = leaf;
+  if (viewport === undefined || points.length === 0) return [...points];
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const clampX = (x: number) =>
+    Math.min(viewport.maxX + margin, Math.max(viewport.minX - margin, x));
+  const clampY = (y: number) =>
+    Math.min(viewport.maxY + margin, Math.max(viewport.minY - margin, y));
+  return [
+    { x: clampX(Math.min(...xs)), y: clampY(Math.min(...ys)) },
+    { x: clampX(Math.max(...xs)), y: clampY(Math.max(...ys)) },
+  ];
+};
 
 /** Paints darkness (as alpha) offscreen, at reduced resolution, over the given screen area. */
 export const paintToneImage = (
@@ -82,14 +114,14 @@ export const paintToneImage = (
 
 /** Reads darkness from a tone map at screen positions. */
 export const toneReader = (image: ToneImage): Tone | undefined => {
-  const { canvas, left, top } = image;
+  const { canvas, left, top, scale } = image;
   const context = canvas.getContext("2d");
   if (context === null) return undefined;
   const [width, height] = [canvas.width, canvas.height];
   const pixels = context.getImageData(0, 0, width, height).data;
   return (x, y) => {
-    const i = Math.floor((x - left) * TONE_SCALE);
-    const j = Math.floor((y - top) * TONE_SCALE);
+    const i = Math.floor((x - left) * scale);
+    const j = Math.floor((y - top) * scale);
     if (i < 0 || j < 0 || i >= width || j >= height) return 0;
     return (pixels[4 * (j * width + i) + 3] ?? 0) / 255;
   };
@@ -99,8 +131,9 @@ export const toneReader = (image: ToneImage): Tone | undefined => {
 export const paintTone = (
   area: readonly { x: number; y: number }[],
   paint: (context: CanvasRenderingContext2D) => void,
+  scale = TONE_SCALE,
 ): Tone | undefined => {
-  const image = paintToneImage(area, paint);
+  const image = paintToneImage(area, paint, scale);
   return image === undefined ? undefined : toneReader(image);
 };
 
@@ -131,7 +164,11 @@ export const fillShadowAt = (
 
 /** The blade's tones: the margin curving away, folds along the veins, and each vein's relief. */
 export const bladeTone = (leaf: PreparedLeaf, blade: Path2D, settings = defaultTone) =>
-  paintTone(leaf.blade, paintBladeTone(leaf, blade, allParts, 0, settings));
+  paintTone(
+    visibleArea(leaf, leaf.blade),
+    paintBladeTone(leaf, blade, allParts, 0, settings),
+    toneScale(leaf),
+  );
 
 /** How the blade's tones are made up, for styles (and viewers) to adjust. */
 export interface ToneSettings {
@@ -205,7 +242,7 @@ export const paintBladeTone =
 
     if (parts.form || parts.folds) {
       const broad = paintToneImage(
-        leaf.blade,
+        visibleArea(leaf, leaf.blade),
         (coarse) => {
           coarse.clip(blade, "evenodd");
           if (neutral > 0) fill(coarse, neutral);
@@ -215,7 +252,7 @@ export const paintBladeTone =
               paintFold(coarse, path, length, halfWidth / widest, settings);
           }
         },
-        TONE_SCALE / 2,
+        toneScale(leaf) / 2,
       );
       if (broad !== undefined) {
         const { canvas, left, top, scale } = broad;
@@ -338,13 +375,15 @@ export const leafLattice = (
   spacing: number,
   seed: number,
   visit: (x: number, y: number, i: number, j: number, index: number) => void,
-  /** If given, only marks within this screen area (roughly) are visited. */
-  area?: {
-    readonly minX: number;
-    readonly minY: number;
-    readonly maxX: number;
-    readonly maxY: number;
-  },
+  /** If given, only marks within this screen area (roughly) are visited; by default, those on screen. */
+  area:
+    | {
+        readonly minX: number;
+        readonly minY: number;
+        readonly maxX: number;
+        readonly maxY: number;
+      }
+    | undefined = leaf.viewport,
 ): void => {
   const { view, bladeScale } = leaf;
   const { step, columns, firstRow, rows, minX } = latticeGrid(leaf, spacing);

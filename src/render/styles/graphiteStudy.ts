@@ -15,6 +15,8 @@ import {
   wobble,
   type Tone,
   type ToneImage,
+  toneScale,
+  visibleArea,
 } from "./drawing";
 
 /**
@@ -204,12 +206,16 @@ const drawLeaf = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
   const petiole = new Path2D();
   traceRibbon(petiole, { left, right });
   // The petiole is shaded and hatched like the blade, so it carries on from the midvein.
-  const image = paintToneImage([...leaf.blade, ...left, ...right], (tone) => {
-    tone.save();
-    paintBladeTone(leaf, blade)(tone);
-    tone.restore();
-    paintPetioleTone(tone, petiole, blade);
-  });
+  const image = paintToneImage(
+    visibleArea(leaf, [...leaf.blade, ...left, ...right]),
+    (tone) => {
+      tone.save();
+      paintBladeTone(leaf, blade)(tone);
+      tone.restore();
+      paintPetioleTone(tone, petiole, blade);
+    },
+    toneScale(leaf),
+  );
   const tone = image === undefined ? undefined : toneReader(image);
   if (image !== undefined && tone !== undefined) {
     const marks = hatching(leaf, tone);
