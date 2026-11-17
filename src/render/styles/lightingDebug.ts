@@ -1,6 +1,6 @@
 import { polygonPath } from "../canvas";
 import { ribbon, traceRibbon } from "../ribbon";
-import type { PreparedLeaf, Style } from "../style";
+import type { PreparedLeaf, Style, StyleOptionValues } from "../style";
 import { INK_CURL } from "./botanicalInk";
 import { curl, LIGHT, paintBladeTone, paintToneImage, type ToneParts } from "./drawing";
 
@@ -13,7 +13,8 @@ import { curl, LIGHT, paintBladeTone, paintToneImage, type ToneParts } from "./d
  * - Green: the broad folds along the veins.
  * - Blue: the form (overall tone and the margin curving away) plus the curl.
  *
- * All three share one gain, so their strengths can be compared.
+ * All share one gain, so their strengths can be compared, and each can be
+ * switched off to see the others alone.
  */
 
 const GREY = "#808080";
@@ -64,7 +65,12 @@ const legend = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
   context.restore();
 };
 
-const drawLeaf = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
+const drawLeaf = (
+  context: CanvasRenderingContext2D,
+  leaf: PreparedLeaf,
+  options: StyleOptionValues,
+) => {
+  const on = (id: string) => options[id] ?? true;
   const blade = polygonPath(leaf.blade, leaf.bladeHoles);
   const form = paintToneImage(
     leaf.blade,
@@ -88,13 +94,15 @@ const drawLeaf = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
     for (let i = 0; i < canvas.width; i++) {
       const k = 4 * (j * canvas.width + i);
       const [x, y] = [left + (i + 0.5) / scale, top + (j + 0.5) / scale];
+      // The form is centred on the blade's typical tone; each part reads 0 when switched off.
       const darkness =
-        (f[k + 3] ?? 0) / 255 +
-        curl((x - leaf.base.x) / length, (y - leaf.base.y) / length, INK_CURL);
-      image.data[k] = channel(0.5 - GAIN * ((r[k + 3] ?? 0) / 255 - 0.5));
-      image.data[k + 1] = channel(0.5 - GAIN * ((g[k + 3] ?? 0) / 255 - 0.5));
-      // Centred on the blade's typical tone.
-      image.data[k + 2] = channel(0.5 - GAIN * (darkness - 0.4));
+        (on("form") ? (f[k + 3] ?? 0) / 255 - 0.4 : 0) +
+        (on("curl") ? curl((x - leaf.base.x) / length, (y - leaf.base.y) / length, INK_CURL) : 0);
+      const shift = (alpha: number | undefined, id: string) =>
+        on(id) ? (alpha ?? 0) / 255 - 0.5 : 0;
+      image.data[k] = channel(0.5 - GAIN * shift(r[k + 3], "relief"));
+      image.data[k + 1] = channel(0.5 - GAIN * shift(g[k + 3], "folds"));
+      image.data[k + 2] = channel(0.5 - GAIN * darkness);
       image.data[k + 3] = 255;
     }
   }
@@ -130,6 +138,12 @@ export const lightingDebug: Style = {
     muted: "#5a5a5a",
     stage: GREY,
   },
+  options: [
+    { id: "relief", label: "Vein relief (red)", initial: true },
+    { id: "folds", label: "Folds (green)", initial: true },
+    { id: "form", label: "Form (blue)", initial: true },
+    { id: "curl", label: "Curl (blue)", initial: true },
+  ],
   backdrop: { kind: "paper", paper: GREY, fibre: GREY, vignette: "rgba(0, 0, 0, 0)" },
   overlay: { source: "#ffff00", kill: "rgba(255, 255, 255, 0.4)", node: "#000000" },
   drawLeaf,

@@ -2,7 +2,7 @@ import type { Region } from "../geometry/region";
 import type { VenationSnapshot } from "../simulation/snapshot";
 import { drawOverlays, type Overlays } from "./overlays";
 import { prepareLeaf, type Frame } from "./prepare";
-import type { Style } from "./style";
+import { styleOptionValues, type Style, type StyleOptionValues } from "./style";
 
 export type { Overlays } from "./overlays";
 export type { Frame } from "./prepare";
@@ -11,6 +11,8 @@ export interface RenderSettings {
   readonly style: Style;
   readonly overlays: Overlays;
   readonly veinWidthExponent: number;
+  /** The viewer's choices for the style's own options. */
+  readonly styleOptions: StyleOptionValues;
 }
 
 export interface Scene {
@@ -29,7 +31,7 @@ export const renderLeaf = (
   frame: Frame,
 ): void => {
   const leaf = prepareLeaf(scene.blade, scene.snapshot, frame, settings.veinWidthExponent);
-  settings.style.drawLeaf(context, leaf);
+  settings.style.drawLeaf(context, leaf, styleOptionValues(settings.style, settings.styleOptions));
   if (scene.snapshot !== undefined) {
     drawOverlays(
       context,

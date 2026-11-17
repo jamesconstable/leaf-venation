@@ -2,7 +2,7 @@ import { createEffect, createMemo, For, on } from "solid-js";
 import type { Region } from "../geometry/region";
 import { paintBokehLayer, paintPaper, BOKEH_LAYERS } from "../render/backdrops";
 import { prepareLeaf } from "../render/prepare";
-import type { Style } from "../render/style";
+import { styleOptionValues, type Style } from "../render/style";
 import type { VenationSnapshot } from "../simulation/snapshot";
 
 const WIDTH = 88;
@@ -45,7 +45,11 @@ const paintSwatch = (
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
   }
   const frame = { left: 0, top: 4, width: WIDTH, height: HEIGHT - 8 };
-  style.drawLeaf(context, prepareLeaf(blade, snapshot, frame, veinWidthExponent));
+  style.drawLeaf(
+    context,
+    prepareLeaf(blade, snapshot, frame, veinWidthExponent),
+    styleOptionValues(style),
+  );
 };
 
 /**

@@ -82,6 +82,23 @@ export interface PreparedLeaf {
   readonly base: { readonly x: number; readonly y: number };
 }
 
+/** A setting a style offers, switched on or off in the options panel. */
+export interface StyleOption {
+  readonly id: string;
+  readonly label: string;
+  readonly initial: boolean;
+}
+
+/** Whether each of a style's options is on, by option id. */
+export type StyleOptionValues = Readonly<Record<string, boolean>>;
+
+/** A style's options as currently set: the viewer's choices, otherwise each option's initial value. */
+export const styleOptionValues = (
+  style: Style,
+  chosen: StyleOptionValues = {},
+): StyleOptionValues =>
+  Object.fromEntries((style.options ?? []).map(({ id, initial }) => [id, chosen[id] ?? initial]));
+
 /** A complete visual treatment of the leaf and what lies behind it. */
 export interface Style {
   readonly id: string;
@@ -93,6 +110,12 @@ export interface Style {
   readonly overlay: { readonly source: string; readonly kill: string; readonly node: string };
   /** Overlays to switch on when this style is chosen (they can still be switched off). */
   readonly suggestedOverlays?: { readonly auxinSources?: boolean; readonly veinNodes?: boolean };
+  /** Settings particular to this style. */
+  readonly options?: readonly StyleOption[];
   /** Draws the leaf onto a transparent canvas above the backdrop. */
-  readonly drawLeaf: (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => void;
+  readonly drawLeaf: (
+    context: CanvasRenderingContext2D,
+    leaf: PreparedLeaf,
+    options: StyleOptionValues,
+  ) => void;
 }

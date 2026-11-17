@@ -1,9 +1,9 @@
-import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { leafOutlines } from "../catalogue/leafOutlines";
 import { outlineRegion } from "../outline/outline";
 import { isStarShapedFrom } from "../outline/starShaped";
 import type { Overlays } from "../render/leafRenderer";
-import type { Style } from "../render/style";
+import { styleOptionValues, type Style, type StyleOptionValues } from "../render/style";
 import { defaultStyle, styles } from "../render/styles";
 import { simulationConfig, type Growth, type Venation } from "../simulation/simulation";
 import type { VenationSnapshot } from "../simulation/snapshot";
@@ -51,6 +51,7 @@ export const App = () => {
     onChange: (checked: boolean) => setChosenOverlays({ ...chosenOverlays(), [key]: checked }),
   });
   const [veinWidthExponent, setVeinWidthExponent] = createSignal(2);
+  const [styleOptions, setStyleOptions] = createSignal<StyleOptionValues>({});
 
   // Playback.
   const [stepsPerFrame, setStepsPerFrame] = createSignal(2);
@@ -134,6 +135,7 @@ export const App = () => {
             style: style(),
             overlays: overlays(),
             veinWidthExponent: veinWidthExponent(),
+            styleOptions: styleOptions(),
           }}
         />
         <p class="caption" aria-live="polite">
@@ -164,6 +166,26 @@ export const App = () => {
             onSelect={setStyle}
           />
         </Section>
+
+        <Show when={style().options}>
+          {(options) => (
+            <Section title="Style options">
+              <For each={options()}>
+                {(option) => (
+                  <Toggle
+                    label={option.label}
+                    checked={
+                      styleOptionValues(style(), styleOptions())[option.id] ?? option.initial
+                    }
+                    onChange={(checked) =>
+                      setStyleOptions({ ...styleOptions(), [option.id]: checked })
+                    }
+                  />
+                )}
+              </For>
+            </Section>
+          )}
+        </Show>
 
         <Section title="Leaf">
           <Choice
