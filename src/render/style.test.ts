@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { styleOptionValues } from "./style";
+import { optionFlag, optionNumber, styleOptionValues } from "./style";
 import { lightingDebug } from "./styles/lightingDebug";
 import { springGreen } from "./styles/springGreen";
 
@@ -19,5 +19,15 @@ describe("styleOptionValues", () => {
       relief: true,
     });
     expect(styleOptionValues(springGreen, { curl: false })).toEqual({});
+  });
+});
+
+describe("optionFlag and optionNumber", () => {
+  it("read a setting of the right kind, or fall back", () => {
+    const values = { on: true, size: 3 };
+    expect(optionFlag(values, "on", false)).toBe(true);
+    expect(optionFlag(values, "size", false)).toBe(false);
+    expect(optionNumber(values, "size", 1)).toBe(3);
+    expect(optionNumber(values, "missing", 1)).toBe(1);
   });
 });

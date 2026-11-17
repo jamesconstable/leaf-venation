@@ -84,15 +84,26 @@ export interface PreparedLeaf {
   readonly base: { readonly x: number; readonly y: number };
 }
 
-/** A setting a style offers, switched on or off in the options panel. */
-export interface StyleOption {
-  readonly id: string;
-  readonly label: string;
-  readonly initial: boolean;
-}
+/** A setting a style offers in the options panel: a switch, or a number on a slider. */
+export type StyleOption =
+  | {
+      readonly kind: "toggle";
+      readonly id: string;
+      readonly label: string;
+      readonly initial: boolean;
+    }
+  | {
+      readonly kind: "range";
+      readonly id: string;
+      readonly label: string;
+      readonly initial: number;
+      readonly min: number;
+      readonly max: number;
+      readonly step: number;
+    };
 
-/** Whether each of a style's options is on, by option id. */
-export type StyleOptionValues = Readonly<Record<string, boolean>>;
+/** Each of a style's options as set, by option id. */
+export type StyleOptionValues = Readonly<Record<string, number | boolean>>;
 
 /** A style's options as currently set: the viewer's choices, otherwise each option's initial value. */
 export const styleOptionValues = (
@@ -100,6 +111,18 @@ export const styleOptionValues = (
   chosen: StyleOptionValues = {},
 ): StyleOptionValues =>
   Object.fromEntries((style.options ?? []).map(({ id, initial }) => [id, chosen[id] ?? initial]));
+
+/** A switch's setting, or `fallback` if the style has no such switch. */
+export const optionFlag = (values: StyleOptionValues, id: string, fallback: boolean): boolean => {
+  const value = values[id];
+  return typeof value === "boolean" ? value : fallback;
+};
+
+/** A slider's setting, or `fallback` if the style has no such slider. */
+export const optionNumber = (values: StyleOptionValues, id: string, fallback: number): number => {
+  const value = values[id];
+  return typeof value === "number" ? value : fallback;
+};
 
 /** A complete visual treatment of the leaf and what lies behind it. */
 export interface Style {

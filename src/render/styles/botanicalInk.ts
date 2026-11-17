@@ -3,18 +3,22 @@ import { drawGhost, fillShadowOnly, polygonPath } from "../canvas";
 import { drawDots, type Dots } from "../dots";
 import { hash2 } from "../noise";
 import { ribbon, traceRibbon, type RibbonPoint } from "../ribbon";
-import type { PreparedLeaf, Style } from "../style";
+import { optionNumber, type PreparedLeaf, type Style, type StyleOptionValues } from "../style";
 import {
   bladeTone,
   closedLine,
   curl,
+  defaultCurlNoise,
+  defaultTone,
   latticeGrid,
   leafLattice,
   paintTone,
   petioleEdges,
   shifted,
   wobble,
+  type CurlNoise,
   type Tone,
+  type ToneSettings,
 } from "./drawing";
 
 /**
@@ -59,28 +63,159 @@ const reliefTone = (lines: readonly RibbonPoint[][]) =>
     }
   });
 
-/** About this many pixels between candidate dots, whatever the leaf's size. */
-const SPACING = 1.4;
+/** The stipple's settings, adjustable as style options. */
+interface Stippling {
+  /** About this many pixels between candidate dots, whatever the leaf's size. */
+  readonly spacing: number;
+  /** The lightest the blade gets: a sparse ground of dots everywhere. */
+  readonly floor: number;
+  /** Dot radius in the lightest tone, and how much it grows in the darkest. */
+  readonly dotSize: number;
+  readonly dotGrowth: number;
+  readonly opacity: number;
+  /**
+   * How strongly the blade's curl shades it. Too strong and it swamps the
+   * shading from the veins, tilting the whole blade dark on one side and light
+   * on the other.
+   */
+  readonly curl: number;
+  readonly curlNoise: CurlNoise;
+}
 
-/**
- * How strongly the blade's curl shades it. Any stronger and it swamps the
- * shading from the veins, tilting the whole blade dark on one side and light on
- * the other.
- */
+/** Ink's adjustable settings, with their suggested values. */
+const OPTIONS = [
+  { id: "curl", label: "Curl strength", initial: 0.08, min: 0, max: 0.3, step: 0.01 },
+  {
+    id: "curlScale",
+    label: "Curl scale (per leaf)",
+    initial: defaultCurlNoise.scale,
+    min: 0.5,
+    max: 10,
+    step: 0.1,
+  },
+  {
+    id: "curlDetail",
+    label: "Curl detail",
+    initial: defaultCurlNoise.detail,
+    min: 0,
+    max: 1.5,
+    step: 0.05,
+  },
+  {
+    id: "curlDetailScale",
+    label: "Curl detail scale",
+    initial: defaultCurlNoise.detailScale,
+    min: 1,
+    max: 20,
+    step: 0.1,
+  },
+  {
+    id: "overall",
+    label: "Overall tone",
+    initial: defaultTone.overall,
+    min: 0,
+    max: 0.8,
+    step: 0.01,
+  },
+  {
+    id: "falloff",
+    label: "Light falloff",
+    initial: defaultTone.falloff,
+    min: -0.3,
+    max: 0.5,
+    step: 0.01,
+  },
+  { id: "margin", label: "Margin shade", initial: defaultTone.margin, min: 0, max: 1, step: 0.01 },
+  { id: "folds", label: "Fold strength", initial: defaultTone.folds, min: 0, max: 3, step: 0.05 },
+  {
+    id: "foldReach",
+    label: "Fold reach",
+    initial: defaultTone.foldReach,
+    min: 0,
+    max: 0.3,
+    step: 0.005,
+  },
+  {
+    id: "relief",
+    label: "Vein relief strength",
+    initial: defaultTone.relief,
+    min: 0,
+    max: 2,
+    step: 0.05,
+  },
+  {
+    id: "reliefReach",
+    label: "Vein relief reach",
+    initial: defaultTone.reliefReach,
+    min: 0,
+    max: 3,
+    step: 0.05,
+  },
+  { id: "spacing", label: "Dot spacing (px)", initial: 1.4, min: 0.8, max: 4, step: 0.1 },
+  { id: "floor", label: "Lightest tone", initial: 0.08, min: 0, max: 0.5, step: 0.01 },
+  { id: "dotSize", label: "Dot size (px)", initial: 0.45, min: 0.2, max: 1.5, step: 0.05 },
+  { id: "dotGrowth", label: "Dot growth in shade", initial: 0.3, min: 0, max: 1.5, step: 0.05 },
+  { id: "opacity", label: "Ink opacity", initial: 0.92, min: 0.2, max: 1, step: 0.01 },
+] as const;
+
+type OptionId = (typeof OPTIONS)[number]["id"];
+
+const settingsFrom = (values: StyleOptionValues) => {
+  const get = (id: OptionId) =>
+    optionNumber(values, id, OPTIONS.find((option) => option.id === id)?.initial ?? 0);
+  const tone: ToneSettings = {
+    overall: get("overall"),
+    falloff: get("falloff"),
+    margin: get("margin"),
+    folds: get("folds"),
+    foldReach: get("foldReach"),
+    relief: get("relief"),
+    reliefReach: get("reliefReach"),
+  };
+  const stippling: Stippling = {
+    spacing: get("spacing"),
+    floor: get("floor"),
+    dotSize: get("dotSize"),
+    dotGrowth: get("dotGrowth"),
+    opacity: get("opacity"),
+    curl: get("curl"),
+    curlNoise: {
+      scale: get("curlScale"),
+      detail: get("curlDetail"),
+      detailScale: get("curlDetailScale"),
+    },
+  };
+  return { tone, stippling };
+};
+
+/** The suggested curl strength, for the lighting debug style. */
 export const INK_CURL = 0.08;
 
 /**
  * The curl at each stipple mark, by its lattice index. A mark keeps its place
  * on the leaf as it grows, so its curl never changes; caching it saves
  * evaluating the noise surface for every mark on every frame. Kept until the
- * view or the random seed of the marks changes.
+ * view, the marks' layout or the curl's settings change.
  */
 let curlCache: { key: string; values: Float32Array } | undefined;
-const curlValues = (leaf: PreparedLeaf, seed: number) => {
+const curlValues = (leaf: PreparedLeaf, seed: number, stippling: Stippling) => {
   const { bounds, view } = leaf;
-  const key = [seed, view.scale, bounds.minX, bounds.minY, bounds.maxX, bounds.maxY].join();
+  const { spacing, curl: strength, curlNoise } = stippling;
+  const key = [
+    seed,
+    spacing,
+    strength,
+    curlNoise.scale,
+    curlNoise.detail,
+    curlNoise.detailScale,
+    view.scale,
+    bounds.minX,
+    bounds.minY,
+    bounds.maxX,
+    bounds.maxY,
+  ].join();
   if (curlCache?.key !== key) {
-    const { columns, rows } = latticeGrid(leaf, SPACING);
+    const { columns, rows } = latticeGrid(leaf, spacing);
     curlCache = { key, values: new Float32Array(columns * rows).fill(Number.NaN) };
   }
   return curlCache.values;
@@ -92,26 +227,32 @@ const stipple = (
   leaf: PreparedLeaf,
   darkness: Tone,
   seed: number,
+  stippling: Stippling,
   /** Whether the blade's curl and a light ground of dots apply (not inside veins). */
   onBlade: boolean,
 ) => {
   const length = leaf.leafLength || 1;
-  const curls = curlValues(leaf, seed);
+  const curls = curlValues(leaf, seed, stippling);
   const dots: Dots = [];
-  leafLattice(leaf, SPACING, seed, (x, y, i, j, index) => {
+  leafLattice(leaf, stippling.spacing, seed, (x, y, i, j, index) => {
     let d = darkness(x, y);
     if (onBlade) {
       let c = curls[index] ?? 0;
       if (Number.isNaN(c)) {
-        c = curl((x - leaf.base.x) / length, (y - leaf.base.y) / length, INK_CURL);
+        c = curl(
+          (x - leaf.base.x) / length,
+          (y - leaf.base.y) / length,
+          stippling.curl,
+          stippling.curlNoise,
+        );
         curls[index] = c;
       }
-      d = Math.max(0.08, d + c);
+      d = Math.max(stippling.floor, d + c);
     }
     if (d <= 0.03 || hash2(i, j, seed + 3) > d) return;
-    dots.push(x, y, 0.45 + 0.3 * d);
+    dots.push(x, y, stippling.dotSize + stippling.dotGrowth * d);
   });
-  drawDots(context, dots, INK_RGB, 0.92);
+  drawDots(context, dots, INK_RGB, stippling.opacity);
 };
 
 const drawVeins = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
@@ -170,14 +311,19 @@ const drawPetiole = (
   context.stroke(edges);
 };
 
-const drawLeaf = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
+const drawLeaf = (
+  context: CanvasRenderingContext2D,
+  leaf: PreparedLeaf,
+  options: StyleOptionValues,
+) => {
+  const settings = settingsFrom(options);
   drawGhost(context, leaf.ghost, "rgba(36, 26, 20, 0.35)", [1.5, 4]);
   const blade = polygonPath(leaf.blade, leaf.bladeHoles);
-  const tone = bladeTone(leaf, blade);
+  const tone = bladeTone(leaf, blade, settings.tone);
   if (tone !== undefined) {
     context.save();
     context.clip(blade, "evenodd");
-    stipple(context, leaf, tone, 1, true);
+    stipple(context, leaf, tone, 1, settings.stippling, true);
     context.restore();
   }
   drawVeins(context, leaf);
@@ -191,7 +337,7 @@ const drawLeaf = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
     for (const line of lines) traceRibbon(within, ribbon(line));
     context.save();
     context.clip(within);
-    stipple(context, leaf, relief, 11, false);
+    stipple(context, leaf, relief, 11, settings.stippling, false);
     context.restore();
   }
 };
@@ -216,5 +362,6 @@ export const botanicalInk: Style = {
     vignette: "rgba(96, 66, 32, 0.5)",
   },
   overlay: { source: "#a33a22", kill: "rgba(163, 58, 34, 0.35)", node: INK },
+  options: OPTIONS.map((option) => ({ kind: "range", ...option })),
   drawLeaf,
 };

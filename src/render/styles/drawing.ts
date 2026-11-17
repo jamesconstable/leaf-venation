@@ -130,8 +130,36 @@ export const fillShadowAt = (
 };
 
 /** The blade's tones: the margin curving away, folds along the veins, and each vein's relief. */
-export const bladeTone = (leaf: PreparedLeaf, blade: Path2D) =>
-  paintTone(leaf.blade, paintBladeTone(leaf, blade));
+export const bladeTone = (leaf: PreparedLeaf, blade: Path2D, settings = defaultTone) =>
+  paintTone(leaf.blade, paintBladeTone(leaf, blade, allParts, 0, settings));
+
+/** How the blade's tones are made up, for styles (and viewers) to adjust. */
+export interface ToneSettings {
+  /** The blade's darkness overall, before folds and relief. */
+  readonly overall: number;
+  /** How much darker the side away from the light is than the side toward it. */
+  readonly falloff: number;
+  /** The darkness of the margin, where the blade curves away from the light. */
+  readonly margin: number;
+  /** The strength of the folds along the veins, and how far they reach (in leaf lengths, for the widest veins). */
+  readonly folds: number;
+  readonly foldReach: number;
+  /** The strength of each vein's relief, and how far it reaches (relative to the usual). */
+  readonly relief: number;
+  readonly reliefReach: number;
+}
+
+export const defaultTone: ToneSettings = {
+  overall: 0.36,
+  falloff: 0.12,
+  margin: 0.55,
+  folds: 1,
+  foldReach: 0.09,
+  relief: 1,
+  reliefReach: 1,
+};
+
+const black = (alpha: number) => `rgba(0, 0, 0, ${Math.min(1, Math.max(0, alpha))})`;
 
 /** The separate contributions to the blade's tones, for looking at one at a time. */
 export interface ToneParts {
@@ -153,7 +181,13 @@ const allParts: ToneParts = { form: true, folds: true, relief: true };
  * resolution.
  */
 export const paintBladeTone =
-  (leaf: PreparedLeaf, blade: Path2D, parts: ToneParts = allParts, neutral = 0) =>
+  (
+    leaf: PreparedLeaf,
+    blade: Path2D,
+    parts: ToneParts = allParts,
+    neutral = 0,
+    settings: ToneSettings = defaultTone,
+  ) =>
   (context: CanvasRenderingContext2D) => {
     context.clip(blade, "evenodd");
     const length = leaf.leafLength;
@@ -175,10 +209,10 @@ export const paintBladeTone =
         (coarse) => {
           coarse.clip(blade, "evenodd");
           if (neutral > 0) fill(coarse, neutral);
-          if (parts.form) paintForm(coarse, leaf, blade);
+          if (parts.form) paintForm(coarse, leaf, blade, settings);
           if (parts.folds) {
             for (const { path, halfWidth } of groups)
-              paintFold(coarse, path, length, halfWidth / widest);
+              paintFold(coarse, path, length, halfWidth / widest, settings);
           }
         },
         TONE_SCALE / 2,
@@ -194,27 +228,39 @@ export const paintBladeTone =
     if (!parts.relief) return;
     for (const { path, halfWidth } of groups) {
       // Veins stand proud: crisp shade beside each on the side away from the light, light on the other.
-      const reach = 1.4 + 2 * halfWidth;
+      const reach = (1.4 + 2 * halfWidth) * settings.reliefReach;
       const blur = 1.5 + 2.5 * halfWidth;
-      fillShadowAt(context, path, "rgba(0, 0, 0, 1)", blur, -LIGHT.x * reach, -LIGHT.y * reach);
+      fillShadowAt(context, path, black(settings.relief), blur, -LIGHT.x * reach, -LIGHT.y * reach);
       context.globalCompositeOperation = "destination-out";
-      fillShadowAt(context, path, "rgba(0, 0, 0, 0.75)", blur, LIGHT.x * reach, LIGHT.y * reach);
+      fillShadowAt(
+        context,
+        path,
+        black(0.75 * settings.relief),
+        blur,
+        LIGHT.x * reach,
+        LIGHT.y * reach,
+      );
       context.globalCompositeOperation = "source-over";
     }
   };
 
 /** A mid tone overall, a little lighter toward the light, and the margin curving away from it. */
-const paintForm = (context: CanvasRenderingContext2D, leaf: PreparedLeaf, blade: Path2D) => {
+const paintForm = (
+  context: CanvasRenderingContext2D,
+  leaf: PreparedLeaf,
+  blade: Path2D,
+  { overall, falloff, margin }: ToneSettings,
+) => {
   const length = leaf.leafLength;
   const { x, y } = leaf.base;
   const light = context.createLinearGradient(x - 0.5 * length, y, x + 0.5 * length, y);
-  light.addColorStop(0, "rgba(0, 0, 0, 0.42)");
-  light.addColorStop(1, "rgba(0, 0, 0, 0.3)");
+  light.addColorStop(0, black(overall + falloff / 2));
+  light.addColorStop(1, black(overall - falloff / 2));
   context.fillStyle = light;
   context.fill(blade);
   const band = new Path2D();
   traceRibbon(band, ribbon(closedLine(leaf.blade, 0.025 * length)));
-  fillShadowOnly(context, band, "rgba(0, 0, 0, 0.55)", 0.04 * length);
+  fillShadowOnly(context, band, black(margin), 0.04 * length);
 };
 
 /**
@@ -229,33 +275,49 @@ const paintFold = (
   veins: Path2D,
   length: number,
   relativeWidth: number,
+  { folds, foldReach }: ToneSettings,
 ) => {
-  const fold = 0.09 * length * relativeWidth;
+  const fold = foldReach * length * relativeWidth;
   if (fold <= 3) return;
   for (let k = 1; k <= 4; k++) {
     const reach = (fold * k) / 4;
     const blur = 2 + 0.5 * reach;
-    fillShadowAt(context, veins, "rgba(0, 0, 0, 0.13)", blur, -LIGHT.x * reach, -LIGHT.y * reach);
+    fillShadowAt(context, veins, black(0.13 * folds), blur, -LIGHT.x * reach, -LIGHT.y * reach);
     context.globalCompositeOperation = "destination-out";
-    fillShadowAt(context, veins, "rgba(0, 0, 0, 0.15)", blur, LIGHT.x * reach, LIGHT.y * reach);
+    fillShadowAt(context, veins, black(0.15 * folds), blur, LIGHT.x * reach, LIGHT.y * reach);
     context.globalCompositeOperation = "source-over";
   }
 };
 
 /** Gentle undulations of the blade, as a height field over the leaf (lengths in leaf lengths). */
-export const surface = (x: number, y: number) =>
-  valueNoise(x * 2.6, y * 2.6, 29) + 0.5 * valueNoise(x * 5.5, y * 5.5, 31);
+export const surface = (x: number, y: number, noise: CurlNoise = defaultCurlNoise) =>
+  valueNoise(x * noise.scale, y * noise.scale, 29) +
+  noise.detail * valueNoise(x * noise.detailScale, y * noise.detailScale, 31);
+
+/** The noise surface behind the curl: its main frequency, and a finer one added at `detail` strength (per leaf length). */
+export interface CurlNoise {
+  readonly scale: number;
+  readonly detail: number;
+  readonly detailScale: number;
+}
+
+export const defaultCurlNoise: CurlNoise = { scale: 2.6, detail: 0.5, detailScale: 5.5 };
 
 /**
  * Shading from the blade's subtle curling and lobing: darker where the surface
  * slopes away from the light, lighter where it faces it. Positions are relative
  * to the base in leaf lengths, so the undulations grow with the leaf.
  */
-export const curl = (x: number, y: number, strength: number) => {
+export const curl = (
+  x: number,
+  y: number,
+  strength: number,
+  noise: CurlNoise = defaultCurlNoise,
+) => {
   const step = 0.02;
   const slope =
-    (surface(x - LIGHT.x * step, y - LIGHT.y * step) -
-      surface(x + LIGHT.x * step, y + LIGHT.y * step)) /
+    (surface(x - LIGHT.x * step, y - LIGHT.y * step, noise) -
+      surface(x + LIGHT.x * step, y + LIGHT.y * step, noise)) /
     (2 * step);
   return strength * slope;
 };

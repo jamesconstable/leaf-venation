@@ -51,7 +51,13 @@ export const App = () => {
     onChange: (checked: boolean) => setChosenOverlays({ ...chosenOverlays(), [key]: checked }),
   });
   const [veinWidthExponent, setVeinWidthExponent] = createSignal(2);
-  const [styleOptions, setStyleOptions] = createSignal<StyleOptionValues>({});
+  // The viewer's choices for each style's own options, by style id.
+  const [styleOptions, setStyleOptions] = createSignal<Readonly<Record<string, StyleOptionValues>>>(
+    {},
+  );
+  const chosenOptions = () => styleOptions()[style().id] ?? {};
+  const chooseOption = (id: string, value: number | boolean) =>
+    setStyleOptions({ ...styleOptions(), [style().id]: { ...chosenOptions(), [id]: value } });
 
   // Playback.
   const [stepsPerFrame, setStepsPerFrame] = createSignal(2);
@@ -135,7 +141,7 @@ export const App = () => {
             style: style(),
             overlays: overlays(),
             veinWidthExponent: veinWidthExponent(),
-            styleOptions: styleOptions(),
+            styleOptions: chosenOptions(),
           }}
         />
         <p class="caption" aria-live="polite">
@@ -171,18 +177,37 @@ export const App = () => {
           {(options) => (
             <Section title="Style options">
               <For each={options()}>
-                {(option) => (
-                  <Toggle
-                    label={option.label}
-                    checked={
-                      styleOptionValues(style(), styleOptions())[option.id] ?? option.initial
-                    }
-                    onChange={(checked) =>
-                      setStyleOptions({ ...styleOptions(), [option.id]: checked })
-                    }
-                  />
-                )}
+                {(option) => {
+                  const value = () => styleOptionValues(style(), chosenOptions())[option.id];
+                  return option.kind === "toggle" ? (
+                    <Toggle
+                      label={option.label}
+                      checked={value() === true}
+                      onChange={(checked) => chooseOption(option.id, checked)}
+                    />
+                  ) : (
+                    <Slider
+                      label={option.label}
+                      value={typeof value() === "number" ? Number(value()) : option.initial}
+                      min={option.min}
+                      max={option.max}
+                      step={option.step}
+                      format={(v) => String(Number(v.toFixed(4)))}
+                      onCommit={(v) => chooseOption(option.id, v)}
+                    />
+                  );
+                }}
               </For>
+              <div class="button-row">
+                <button
+                  type="button"
+                  disabled={Object.keys(chosenOptions()).length === 0}
+                  onClick={() => setStyleOptions({ ...styleOptions(), [style().id]: {} })}
+                  title="Return this style's options to their suggested settings"
+                >
+                  Reset style options
+                </button>
+              </div>
             </Section>
           )}
         </Show>

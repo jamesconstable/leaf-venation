@@ -1,6 +1,6 @@
 import { polygonPath } from "../canvas";
 import { ribbon, traceRibbon } from "../ribbon";
-import type { PreparedLeaf, Style, StyleOptionValues } from "../style";
+import { optionFlag, type PreparedLeaf, type Style, type StyleOptionValues } from "../style";
 import { INK_CURL } from "./botanicalInk";
 import { curl, LIGHT, paintBladeTone, paintToneImage, type ToneParts } from "./drawing";
 
@@ -66,7 +66,7 @@ const drawLeaf = (
   leaf: PreparedLeaf,
   options: StyleOptionValues,
 ) => {
-  const on = (id: string) => options[id] ?? true;
+  const on = (id: string) => optionFlag(options, id, true);
   const blade = polygonPath(leaf.blade, leaf.bladeHoles);
   const form = paintToneImage(
     leaf.blade,
@@ -135,10 +135,10 @@ export const lightingDebug: Style = {
     stage: GREY,
   },
   options: [
-    { id: "relief", label: "Vein relief (red)", initial: true },
-    { id: "folds", label: "Folds (green)", initial: true },
-    { id: "form", label: "Form (blue)", initial: true },
-    { id: "curl", label: "Curl (blue)", initial: true },
+    { kind: "toggle", id: "relief", label: "Vein relief (red)", initial: true },
+    { kind: "toggle", id: "folds", label: "Folds (green)", initial: true },
+    { kind: "toggle", id: "form", label: "Form (blue)", initial: true },
+    { kind: "toggle", id: "curl", label: "Curl (blue)", initial: true },
   ],
   backdrop: { kind: "paper", paper: GREY, fibre: GREY, vignette: "rgba(0, 0, 0, 0)" },
   overlay: { source: "#ffff00", kill: "rgba(255, 255, 255, 0.4)", node: "#000000" },
