@@ -48,7 +48,7 @@ const toothTexture = () =>
   }));
 
 /** Lays in the smudged graphite tone, broken up by the paper's tooth, at full resolution. */
-const drawTone = (context: CanvasRenderingContext2D, image: ToneImage) => {
+const drawTone = (context: CanvasRenderingContext2D, image: ToneImage, magnification: number) => {
   const ratio = context.getTransform().a;
   const { canvas, left, top, scale } = image;
   const [width, height] = [canvas.width / scale, canvas.height / scale];
@@ -62,10 +62,13 @@ const drawTone = (context: CanvasRenderingContext2D, image: ToneImage) => {
   graphite.globalCompositeOperation = "source-in";
   graphite.fillStyle = GRAPHITE;
   graphite.fillRect(0, 0, layer.width, layer.height);
-  // The tooth belongs to the paper, so it stays put on screen as the leaf grows.
+  // The tooth belongs to the paper, so it stays put as the leaf grows.
   const pattern = graphite.createPattern(toothTexture(), "repeat");
   if (pattern !== null) {
-    pattern.setTransform(new DOMMatrix().translate(-left * ratio, -top * ratio));
+    // Fixed to the picture, and magnified with it when zoomed in.
+    pattern.setTransform(
+      new DOMMatrix().translate(-left * ratio, -top * ratio).scale(magnification),
+    );
     graphite.globalCompositeOperation = "destination-out";
     graphite.fillStyle = pattern;
     graphite.fillRect(0, 0, layer.width, layer.height);
@@ -225,7 +228,7 @@ const drawLeaf = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
       clip.forEach((path) => {
         context.clip(path, "evenodd");
       });
-      drawTone(context, image);
+      drawTone(context, image, leaf.magnification);
       strokeHatching(context, marks);
       context.restore();
     }
