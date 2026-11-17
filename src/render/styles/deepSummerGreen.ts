@@ -18,7 +18,10 @@ import { closedLine, LIGHT, paintToneImage, shifted, type ToneImage } from "./dr
 const SUN = lightFrom(LIGHT, 0.75);
 /** The blade's colour in full light, and in shadow. */
 const LIT = [48, 148, 36] as const;
-const DEEP = [10, 46, 14] as const;
+const DEEP = [4, 38, 32] as const;
+/** How the colour shifts where the tissue is warmer (yellower), and in full light. */
+const WARM = [40, 14, -6] as const;
+const GLOW = [60, 40, -10] as const;
 const SHEEN = [236, 250, 214] as const;
 
 /** A mask's coverage at each pixel, from its alpha. */
@@ -88,53 +91,83 @@ const heights = (leaf: PreparedLeaf, blade: Path2D) => {
   blurField(broad, width, height, 0.02 * length);
 
   const field = new Float32Array(width * height);
+  const pebbles = new Float32Array(width * height);
+  /** How close each point is to a vein or the margin, where the tissue is a little yellower. */
+  const edges = new Float32Array(width * height);
   for (let j = 0; j < height; j++) {
     for (let i = 0; i < width; i++) {
       const k = j * width + i;
-      // A gentle, fine pebbling of the surface, fixed to the leaf's base.
       const [x, y] = [left + i / scale - leaf.base.x, top + j / scale - leaf.base.y];
-      const pebble = valueNoise(x / 3, y / 3, 7);
+      // Across the blade and along it, in leaf lengths from the base.
+      const [across, along] = [x / leaf.leafLength, -y / leaf.leafLength];
+      const margin = 1 - Math.min(1, 2 * (dome[k] ?? 0));
+      // No leaf is perfectly symmetric: one side folds up more than the other
+      // about the midvein, the blade twists a little along its length, and the
+      // margin undulates gently.
+      const shape =
+        length *
+        (0.22 * across * across * (across > 0 ? 1 : 0.45) +
+          0.08 * across * (along - 0.5) +
+          0.03 * margin * (valueNoise(across * 7, along * 7, 17) - 0.5));
       field[k] =
-        0.08 * length * (dome[k] ?? 0) -
+        0.06 * length * (dome[k] ?? 0) +
+        shape -
         3 * (sharp[k] ?? 0) -
         9 * (fold[k] ?? 0) -
-        0.05 * length * (broad[k] ?? 0) +
-        0.2 * pebble;
+        0.05 * length * (broad[k] ?? 0);
+      // A gentle, fine pebbling of the surface, fixed to the leaf's base.
+      pebbles[k] = 0.2 * valueNoise(x / 3, y / 3, 7);
+      edges[k] = Math.min(1, 2.5 * (fold[k] ?? 0) + margin);
     }
   }
-  return { field, width, height, image: bladeImage };
+  return { field, pebbles, edges, width, height, image: bladeImage };
 };
 
 /** The lit blade, as an image at the tone map's resolution. */
 const shadeBlade = (leaf: PreparedLeaf, blade: Path2D) => {
   const surface = heights(leaf, blade);
   if (surface === undefined) return;
-  const { field, width, height, image } = surface;
+  const { field, pebbles, edges, width, height, image } = surface;
   const out = document.createElement("canvas");
   [out.width, out.height] = [width, height];
   const context = out.getContext("2d");
   if (context === null) return;
   const pixels = context.createImageData(width, height);
-  const at = (i: number, j: number) =>
-    field[Math.min(height - 1, Math.max(0, j)) * width + Math.min(width - 1, Math.max(0, i))] ?? 0;
+  const index = (i: number, j: number) =>
+    Math.min(height - 1, Math.max(0, j)) * width + Math.min(width - 1, Math.max(0, i));
+  const at = (i: number, j: number) => field[index(i, j)] ?? 0;
+  const bumpy = (i: number, j: number) => at(i, j) + (pebbles[index(i, j)] ?? 0);
   const { left, top, scale } = image;
   const length = leaf.leafLength || 1;
   for (let j = 0; j < height; j++) {
     for (let i = 0; i < width; i++) {
-      const dx = (at(i + 1, j) - at(i - 1, j)) / 2;
-      const dy = (at(i, j + 1) - at(i, j - 1)) / 2;
-      const { diffuse, specular } = reflect(dx, dy, SUN, 20);
-      // Broad, soft variation in colour, yellower in places.
+      // The broad form lights the blade; the fine pebbling shows only in its sheen,
+      // as on a real leaf, where it catches the light but barely shades.
+      const { diffuse } = reflect(
+        (at(i + 1, j) - at(i - 1, j)) / 2,
+        (at(i, j + 1) - at(i, j - 1)) / 2,
+        SUN,
+        20,
+      );
+      const { specular } = reflect(
+        (bumpy(i + 1, j) - bumpy(i - 1, j)) / 2,
+        (bumpy(i, j + 1) - bumpy(i, j - 1)) / 2,
+        SUN,
+        20,
+      );
       const [x, y] = [
         (left + i / scale - leaf.base.x) / length,
         (top + j / scale - leaf.base.y) / length,
       ];
-      const warm = valueNoise(x * 4, y * 4, 13) - 0.5;
+      // Broad, soft variation in colour, and yellower tissue by the veins and margin.
+      const warm = valueNoise(x * 4, y * 4, 13) - 0.5 + 0.35 * (edges[j * width + i] ?? 0);
       const light = Math.min(1.1, 0.15 + 0.95 * diffuse);
+      // Light scattered inside the leaf: shade deepens toward blue-green, full light warms.
+      const glow = Math.max(0, light - 0.8);
       const sheen = 0.6 * specular;
       const k = 4 * (j * width + i);
       for (let c = 0; c < 3; c++) {
-        const base = (LIT[c] ?? 0) + (c === 0 ? 40 : c === 1 ? 14 : -6) * warm;
+        const base = (LIT[c] ?? 0) + (WARM[c] ?? 0) * warm + (GLOW[c] ?? 0) * glow;
         const lit = (DEEP[c] ?? 0) + (base - (DEEP[c] ?? 0)) * light;
         pixels.data[k + c] = Math.round(lit + ((SHEEN[c] ?? 0) - lit) * sheen);
       }
