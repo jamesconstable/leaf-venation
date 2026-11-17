@@ -33,6 +33,7 @@ export const springGreen: Style = {
     patches: { light: [196, 222, 104], shade: [52, 96, 30], alpha: 0.75 },
     warmth: ["rgba(206, 214, 96, 0.35)", "rgba(206, 214, 96, 0)"],
     cellAlpha: 0.35,
+    livingCells: true,
     veinShadow: "rgba(44, 84, 14, 0.5)",
     cores: ["rgb(220, 237, 148)", "rgba(214, 234, 140, 0.9)", "rgba(204, 228, 128, 0.8)"],
     rim: ["rgba(214, 236, 112, 0.75)", "rgba(232, 246, 150, 0.85)", "rgba(246, 252, 196, 1)"],

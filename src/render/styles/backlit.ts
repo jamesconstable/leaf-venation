@@ -9,6 +9,7 @@ import {
 import { tileableCells, tileableNoise } from "../noise";
 import { ribbon, traceRibbon, type RibbonPoint } from "../ribbon";
 import type { PreparedLeaf, PreparedVein, Style } from "../style";
+import { livingCells } from "./livingCells";
 
 /**
  * A leaf in light, modelled on photographs of backlit leaves, shared by the
@@ -32,6 +33,8 @@ export interface LeafLook {
   readonly warmth: readonly [string, string];
   /** How strongly the cell texture shows. */
   readonly cellAlpha: number;
+  /** Whether the cells are computed afresh around the veins each frame, rather than a fixed texture. */
+  readonly livingCells?: boolean;
   /** The soft shadow of denser tissue beside each vein. */
   readonly veinShadow: string;
   /** Vein cores by order: the first order (also the petiole), the second, and the rest. */
@@ -157,14 +160,23 @@ const drawCells = (
   blade: Path2D,
   look: LeafLook,
 ) => {
-  const cellPattern = pinnedPattern(context, cellTexture(), leaf.base, 1);
-  if (cellPattern === null) return;
   context.save();
   context.clip(blade, "evenodd");
   context.globalCompositeOperation = "overlay";
   context.globalAlpha = look.cellAlpha;
-  context.fillStyle = cellPattern;
-  context.fill(blade);
+  if (look.livingCells === true) {
+    const cells = livingCells(leaf);
+    if (cells !== undefined) {
+      const { canvas, left, top } = cells;
+      context.drawImage(canvas, left, top, canvas.width, canvas.height);
+    }
+  } else {
+    const cellPattern = pinnedPattern(context, cellTexture(), leaf.base, 1);
+    if (cellPattern !== null) {
+      context.fillStyle = cellPattern;
+      context.fill(blade);
+    }
+  }
   context.restore();
 };
 
