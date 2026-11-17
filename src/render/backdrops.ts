@@ -162,9 +162,9 @@ export const paintPaper = (
  */
 export const BOKEH_LAYERS = [
   { resolution: 1 / 10, blur: 6, seed: 1 }, // atmosphere: light, shade and soft masses
-  { resolution: 1 / 7, blur: 3, seed: 2 }, // branches of small leaves
+  { resolution: 1 / 7, blur: 4, seed: 2 }, // branches of small leaves
   { resolution: 1 / 5, blur: 4, seed: 3 }, // large leaves framing the edges
-  { resolution: 1 / 3, blur: 1, seed: 4 }, // highlights, blended with "screen"
+  { resolution: 1 / 3, blur: 3, seed: 4 }, // highlights, blended with "screen"
 ] as const;
 
 /** Where the light comes from, as a fraction of the layer's width and height. */
@@ -369,13 +369,12 @@ const paintHighlights = (
     const [x, y] = [fx * width, fy * height];
     const r = size * (0.006 + next() * 0.026);
     const colour = pick(backdrop.lights, next, "white");
-    // A bokeh disc: an even plateau of light with a slightly brighter rim and a soft edge.
+    // A bokeh disc: a soft plateau of light fading gently at its edge.
     const disc = context.createRadialGradient(x, y, 0, x, y, r);
     disc.addColorStop(0, colour);
-    disc.addColorStop(0.8, colour);
-    disc.addColorStop(0.9, "white");
+    disc.addColorStop(0.55, colour);
     disc.addColorStop(1, "rgba(255, 255, 255, 0)");
-    context.globalAlpha = (0.12 + 0.5 * next()) * (0.25 + 0.75 * nearness);
+    context.globalAlpha = (0.1 + 0.4 * next()) * (0.25 + 0.75 * nearness);
     context.fillStyle = disc;
     context.beginPath();
     context.arc(x, y, r, 0, Math.PI * 2);

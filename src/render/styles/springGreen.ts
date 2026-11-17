@@ -19,11 +19,11 @@ export const springGreen: Style = {
   backdrop: {
     kind: "bokeh",
     deep: "#08221c",
-    mid: "#245a3e",
-    bright: "#cdeec0",
-    cool: "#2a8a8c",
-    foliage: ["#0a2a1e", "#16472e", "#26683e", "#46944c", "#8cc866"],
-    lights: ["#f2fff0", "#e0f8d6", "#d2f2ec", "#ffffff"],
+    mid: "#2a5e38",
+    bright: "#d6ec9e",
+    cool: "#2a8a80",
+    foliage: ["#0a2a1e", "#17492c", "#2c6e38", "#56a040", "#9ccf5a"],
+    lights: ["#f4ffe2", "#e4f6c2", "#d4f0e2", "#ffffff"],
   },
   overlay: { source: "#e2563b", kill: "rgba(255, 210, 190, 0.6)", node: "#20360f" },
   drawLeaf: backlitLeaf({
