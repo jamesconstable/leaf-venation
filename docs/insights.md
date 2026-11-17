@@ -110,6 +110,10 @@ The ink style's tone is the sum of several terms: an overall gradient and the ma
 
 Timing ink's phases with `performance.now()` pointed at the wrong culprits at first. Canvas drawing is queued for the GPU, so a phase that only issues commands looks cheap and the cost turns up later, wherever something waits for the GPU: reading the tone map back with `getImageData` took 14 ms, almost all of it waiting for blurs queued just before. Painting at lower resolution barely changed it, while painting on a CPU-backed canvas (`willReadFrequently`) just moved the same cost into the blurs. The stipple loop's cost was building the path, not the per-dot maths: tens of thousands of `arc` calls took about 15 ms, so caching the noise per dot saved almost nothing until the dots were written straight into pixels. Frame intervals from `requestAnimationFrame` also mislead, since they snap to whole display frames (16.7, 33.3, 50 ms), and runs with different random seeds aren't comparable. Timing the style's whole draw call, with a fixed seed, gave trustworthy numbers.
 
+### Check that a cache actually hits
+
+Caching each stipple mark's curl seemed to save nothing, which wrongly suggested the curl wasn't costly. In fact the cache never hit: the vein stipple pass asked for it with a different random seed, evicting the blade's entry every frame. Fetching it only for the blade took ink from 38 ms to 29 ms a frame. Each blurred shadow fill also turned out to have a high fixed cost, regardless of the canvas's resolution, so painting folds with two wide offsets instead of four narrow ones saved more than halving their resolution had.
+
 ### A reactive framework can reset an input before you read it
 
 Our slider kept a "draft" value while dragging. On release, the handler cleared the draft and then read the input's value. But clearing the draft made SolidJS synchronously re-render the input with the old value, so every slider silently ignored the user. The unit tests didn't cover the UI; a browser check found it within minutes.

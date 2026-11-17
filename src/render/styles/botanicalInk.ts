@@ -230,28 +230,37 @@ const stipple = (
   stippling: Stippling,
   /** Whether the blade's curl and a light ground of dots apply (not inside veins). */
   onBlade: boolean,
+  /** The screen area to stipple, if not the whole leaf. */
+  area?: { minX: number; minY: number; maxX: number; maxY: number },
 ) => {
   const length = leaf.leafLength || 1;
-  const curls = curlValues(leaf, seed, stippling);
+  // Only the blade has curl; asking for the veins would evict the blade's cache.
+  const curls = onBlade ? curlValues(leaf, seed, stippling) : undefined;
   const dots: Dots = [];
-  leafLattice(leaf, stippling.spacing, seed, (x, y, i, j, index) => {
-    let d = darkness(x, y);
-    if (onBlade) {
-      let c = curls[index] ?? 0;
-      if (Number.isNaN(c)) {
-        c = curl(
-          (x - leaf.base.x) / length,
-          (y - leaf.base.y) / length,
-          stippling.curl,
-          stippling.curlNoise,
-        );
-        curls[index] = c;
+  leafLattice(
+    leaf,
+    stippling.spacing,
+    seed,
+    (x, y, i, j, index) => {
+      let d = darkness(x, y);
+      if (curls !== undefined) {
+        let c = curls[index] ?? 0;
+        if (Number.isNaN(c)) {
+          c = curl(
+            (x - leaf.base.x) / length,
+            (y - leaf.base.y) / length,
+            stippling.curl,
+            stippling.curlNoise,
+          );
+          curls[index] = c;
+        }
+        d = Math.max(stippling.floor, d + c);
       }
-      d = Math.max(stippling.floor, d + c);
-    }
-    if (d <= 0.03 || hash2(i, j, seed + 3) > d) return;
-    dots.push(x, y, stippling.dotSize + stippling.dotGrowth * d);
-  });
+      if (d <= 0.03 || hash2(i, j, seed + 3) > d) return;
+      dots.push(x, y, stippling.dotSize + stippling.dotGrowth * d);
+    },
+    area,
+  );
   drawDots(context, dots, INK_RGB, stippling.opacity);
 };
 
@@ -337,7 +346,14 @@ const drawLeaf = (
     for (const line of lines) traceRibbon(within, ribbon(line));
     context.save();
     context.clip(within);
-    stipple(context, leaf, relief, 11, settings.stippling, false);
+    const points = lines.flat();
+    const area = {
+      minX: Math.min(...points.map((p) => p.x - p.halfWidth)),
+      minY: Math.min(...points.map((p) => p.y - p.halfWidth)),
+      maxX: Math.max(...points.map((p) => p.x + p.halfWidth)),
+      maxY: Math.max(...points.map((p) => p.y + p.halfWidth)),
+    };
+    stipple(context, leaf, relief, 11, settings.stippling, false, area);
     context.restore();
   }
 };

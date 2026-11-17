@@ -1,9 +1,9 @@
 import { polygonContains, type Polygon } from "../../geometry/region";
 import { fillShadowOnly } from "../canvas";
 import { hash2, valueNoise } from "../noise";
+import { toScreenX, toScreenY } from "../view";
 import { ribbon, traceRibbon, type RibbonPoint } from "../ribbon";
 import type { PreparedLeaf, PreparedVein } from "../style";
-import { toScreenX, toScreenY } from "../view";
 
 /**
  * Shared by the drawing styles (pen, pencil): a hand's wobble, and the tones of
@@ -279,12 +279,14 @@ const paintFold = (
 ) => {
   const fold = foldReach * length * relativeWidth;
   if (fold <= 3) return;
-  for (let k = 1; k <= 4; k++) {
-    const reach = (fold * k) / 4;
-    const blur = 2 + 0.5 * reach;
-    fillShadowAt(context, veins, black(0.13 * folds), blur, -LIGHT.x * reach, -LIGHT.y * reach);
+  // Two offsets, each blurred widely, give much the same graded fold as four
+  // narrower ones at half the cost (each blurred fill has a high fixed cost).
+  for (const step of [0.4, 0.85]) {
+    const reach = fold * step;
+    const blur = 2 + 0.7 * reach;
+    fillShadowAt(context, veins, black(0.245 * folds), blur, -LIGHT.x * reach, -LIGHT.y * reach);
     context.globalCompositeOperation = "destination-out";
-    fillShadowAt(context, veins, black(0.15 * folds), blur, LIGHT.x * reach, LIGHT.y * reach);
+    fillShadowAt(context, veins, black(0.28 * folds), blur, LIGHT.x * reach, LIGHT.y * reach);
     context.globalCompositeOperation = "source-over";
   }
 };
@@ -336,12 +338,36 @@ export const leafLattice = (
   spacing: number,
   seed: number,
   visit: (x: number, y: number, i: number, j: number, index: number) => void,
+  /** If given, only marks within this screen area (roughly) are visited. */
+  area?: {
+    readonly minX: number;
+    readonly minY: number;
+    readonly maxX: number;
+    readonly maxY: number;
+  },
 ): void => {
   const { view, bladeScale } = leaf;
   const { step, columns, firstRow, rows, minX } = latticeGrid(leaf, spacing);
   const shown = bladeScale * bladeScale;
-  for (let j = firstRow; j < firstRow + rows; j++) {
-    for (let i = 0; i < columns; i++) {
+  // The area in lattice cells, with a cell to spare for the jitter.
+  const toU = (x: number) => (x - view.offsetX) / view.scale / bladeScale;
+  const toV = (y: number) => (view.offsetY - y) / view.scale / bladeScale;
+  const [i0, i1] =
+    area === undefined
+      ? [0, columns - 1]
+      : [
+          Math.max(0, Math.floor((toU(area.minX) - minX) / step) - 1),
+          Math.min(columns - 1, Math.ceil((toU(area.maxX) - minX) / step) + 1),
+        ];
+  const [j0, j1] =
+    area === undefined
+      ? [firstRow, firstRow + rows - 1]
+      : [
+          Math.max(firstRow, Math.floor(toV(area.maxY) / step) - 1),
+          Math.min(firstRow + rows - 1, Math.ceil(toV(area.minY) / step) + 1),
+        ];
+  for (let j = j0; j <= j1; j++) {
+    for (let i = i0; i <= i1; i++) {
       if (hash2(i, j, seed) >= shown) continue;
       const u = minX + (i + hash2(i, j, seed + 1)) * step;
       const v = (j + hash2(i, j, seed + 2)) * step;
