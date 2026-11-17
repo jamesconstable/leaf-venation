@@ -188,8 +188,7 @@ const heights = (leaf: PreparedLeaf, blade: Path2D, settings: Settings) => {
         settings.creases *
           (3 * zoom * (sharp[k] ?? 0) +
             9 * zoom * (fold[k] ?? 0) +
-            0.05 * length * (broad[k] ?? 0)) *
-          -1;
+            0.05 * length * (broad[k] ?? 0));
       // A gentle, fine pebbling of the surface, fixed to the leaf's base.
       pebbles[k] = 0.2 * settings.pebbling * zoom * valueNoise(x / 3, y / 3, 7);
       edges[k] = Math.min(1, 2.5 * (fold[k] ?? 0) + margin);
