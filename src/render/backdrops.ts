@@ -1,7 +1,7 @@
 import type { Polygon } from "../geometry/region";
 import { boxBlur } from "./blur";
 import { makeTexture } from "./canvas";
-import { fractalNoise, scatter, tileableNoise } from "./noise";
+import { fractalNoise, hash2, scatter, tileableNoise } from "./noise";
 import type { Backdrop } from "./style";
 
 type PaperBackdrop = Extract<Backdrop, { kind: "paper" }>;
@@ -11,7 +11,8 @@ const grainCache = new Map<string, HTMLCanvasElement>();
 
 /** A seamless tile of paper grain: soft mottling plus fine tooth. */
 const paperGrain = (backdrop: PaperBackdrop) => {
-  const key = backdrop.paper + backdrop.fibre;
+  const strength = backdrop.grain ?? 1;
+  const key = `${backdrop.paper}${backdrop.fibre}${strength}`;
   const cached = grainCache.get(key);
   if (cached !== undefined) return cached;
   const tile = makeTexture(384, 384, (context, width, height) => {
@@ -25,7 +26,9 @@ const paperGrain = (backdrop: PaperBackdrop) => {
         image.data[i] = 0;
         image.data[i + 1] = 0;
         image.data[i + 2] = 0;
-        image.data[i + 3] = Math.round(255 * Math.max(0, shade - 0.35) * 0.22);
+        image.data[i + 3] = Math.round(
+          255 * Math.min(1, Math.max(0, shade - 0.35) * 0.22 * strength),
+        );
       }
     }
     context.putImageData(image, 0, 0);
@@ -35,9 +38,11 @@ const paperGrain = (backdrop: PaperBackdrop) => {
 };
 
 /**
- * An uneven watercolour wash: pigment pooled in broad blotches, with darker
- * tide lines where the edges of pools dried. Painted at a third of the screen's
- * resolution; the browser smooths it as it scales up.
+ * A watercolour wash laid in broad, wet strokes, rising gently to the right.
+ * Each stroke carries its own load of pigment, streaked along its length by
+ * the brush, with a darker wet edge along its lower side where it dried. The
+ * strokes' edges wander. Painted at a third of the screen's resolution; the
+ * browser smooths it as it scales up.
  */
 const paintWash = (
   context: CanvasRenderingContext2D,
@@ -46,6 +51,10 @@ const paintWash = (
   { light, dark }: NonNullable<PaperBackdrop["wash"]>,
 ) => {
   const scale = 1 / 3;
+  const angle = -0.18;
+  const [cos, sin] = [Math.cos(angle), Math.sin(angle)];
+  /** The width of a stroke, in screen pixels. */
+  const stroke = 190;
   const wash = makeTexture(
     Math.max(1, Math.ceil(width * scale)),
     Math.max(1, Math.ceil(height * scale)),
@@ -54,14 +63,35 @@ const paintWash = (
       for (let j = 0; j < h; j++) {
         for (let i = 0; i < w; i++) {
           const [x, y] = [i / scale, j / scale];
-          const pool = fractalNoise(x / 260, y / 260, 5, 71);
-          const grain = fractalNoise(x / 30, y / 30, 3, 73);
-          const tide =
-            Math.exp(-(((pool - 0.56) / 0.02) ** 2)) +
-            0.6 * Math.exp(-(((pool - 0.43) / 0.025) ** 2));
+          // Along the stroke (u) and across it (v), with the stroke's edges wandering.
+          const u = x * cos + y * sin;
+          const v =
+            -x * sin +
+            y * cos +
+            160 * (fractalNoise(u / 700, y / 900, 3, 71) - 0.5) +
+            40 * (fractalNoise(u / 160, y / 160, 2, 75) - 0.5);
+          const band = Math.floor(v / stroke);
+          const across = v / stroke - band;
+          // Blended over a few pixels where one stroke meets the next, so its edge isn't jagged.
+          const meet = Math.min(1, across / 0.03);
+          const load =
+            0.3 + 0.45 * (hash2(band - 1, 0, 72) * (1 - meet) + hash2(band, 0, 72) * meet);
+          // The load thins and thickens along the stroke, and the bristles streak it.
+          const along = fractalNoise(u / 500, band * 5.3, 3, 73) - 0.5;
+          const streaks = fractalNoise(u / 260, v / 9, 2, 74) - 0.5;
+          // The previous stroke's wet edge runs on a little past where this one starts.
+          const wetEdge =
+            Math.exp(-(((1 - across) / 0.1) ** 2)) + Math.exp(-((across / 0.03) ** 2));
           const pigment = Math.min(
             1,
-            Math.max(0, 0.5 + 1.5 * (pool - 0.5) + 0.35 * (grain - 0.5) + 0.18 * tide),
+            Math.max(
+              0,
+              load +
+                0.12 * (meet * across + 1 - meet) +
+                0.5 * along +
+                0.18 * streaks +
+                0.14 * wetEdge,
+            ),
           );
           const k = 4 * (j * w + i);
           for (let c = 0; c < 3; c++) {

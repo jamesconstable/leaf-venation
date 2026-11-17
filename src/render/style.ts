@@ -40,6 +40,8 @@ export type Backdrop =
       readonly kind: "paper";
       readonly paper: string;
       readonly fibre: string;
+      /** How strongly the paper's grain shows, relative to the usual (1). */
+      readonly grain?: number;
       readonly vignette: string;
       /** Ruled like graph paper: fine lines `spacing` pixels apart, every fifth one heavier. */
       readonly grid?: { readonly minor: string; readonly major: string; readonly spacing: number };

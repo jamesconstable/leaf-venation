@@ -60,7 +60,7 @@ const mesophyllTexture = () =>
         image.data[i] = 236;
         image.data[i + 1] = 244;
         image.data[i + 2] = 255;
-        image.data[i + 3] = Math.round(255 * Math.min(1, 0.5 * wall * shown));
+        image.data[i + 3] = Math.round(255 * Math.min(1, 0.625 * wall * shown));
       }
     }
     context.putImageData(image, 0, 0);
@@ -140,6 +140,7 @@ export const cyanotype: Style = {
     paper: PAPER,
     fibre: "#6f93c4",
     vignette: "rgba(6, 20, 48, 0.65)",
+    grain: 2.2,
     wash: { light: [44, 92, 156], dark: [16, 46, 98] },
   },
   overlay: { source: "#ffd166", kill: "rgba(255, 255, 255, 0.45)", node: "#ffffff" },
