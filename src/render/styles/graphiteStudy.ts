@@ -1,4 +1,4 @@
-import type { Polygon } from "../../geometry/region";
+import { polygonContains, type Polygon } from "../../geometry/region";
 import { drawGhost, fillShadowOnly, makeTexture, polygonPath } from "../canvas";
 import { hash2, tileableNoise } from "../noise";
 import { ribbon, traceRibbon, type RibbonPoint } from "../ribbon";
@@ -77,7 +77,7 @@ const drawTone = (context: CanvasRenderingContext2D, image: ToneImage) => {
 const HATCH = -0.8;
 
 /** Straight, parallel strokes over the darker areas, on the shared lattice. */
-const hatch = (context: CanvasRenderingContext2D, leaf: PreparedLeaf, tone: Tone) => {
+const hatching = (leaf: PreparedLeaf, tone: Tone) => {
   const length = leaf.leafLength || 1;
   // Two pressures: most strokes light, some firmer.
   const light = new Path2D();
@@ -92,6 +92,13 @@ const hatch = (context: CanvasRenderingContext2D, leaf: PreparedLeaf, tone: Tone
     path.moveTo(x - dx, y - dy);
     path.lineTo(x + dx, y + dy);
   });
+  return { light, firm };
+};
+
+const strokeHatching = (
+  context: CanvasRenderingContext2D,
+  { light, firm }: ReturnType<typeof hatching>,
+) => {
   context.strokeStyle = GRAPHITE;
   context.lineCap = "round";
   context.lineWidth = 0.5;
@@ -106,92 +113,126 @@ const hatch = (context: CanvasRenderingContext2D, leaf: PreparedLeaf, tone: Tone
 const pencilLine = (centre: readonly RibbonPoint[]) =>
   wobble(centre, 0.6, 5).map((p) => ({ ...p, halfWidth: Math.max(0.5, p.halfWidth) }));
 
-/** Veins lifted out of the tone with an eraser: not quite clean, with a faint edge on the wider ones. */
-const drawVeins = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
+/** Everything but the given shape. */
+const outsideOf = (shape: Path2D) => {
+  const outside = new Path2D();
+  outside.rect(-1e5, -1e5, 2e5, 2e5);
+  outside.addPath(shape);
+  return outside;
+};
+
+/** The petiole's tone below the blade, for the tone and hatching beneath its lifted paper. */
+const paintPetioleTone = (context: CanvasRenderingContext2D, shape: Path2D, blade: Path2D) => {
+  context.save();
+  context.clip(outsideOf(blade), "evenodd");
+  context.clip(shape);
+  context.fillStyle = "rgba(0, 0, 0, 0.36)";
+  context.fill(shape);
+  context.restore();
+};
+
+/**
+ * Soft shade along the petiole's side away from the light, tapering to nothing
+ * where it runs on into the blade, so the stalk reads as round without a seam
+ * where it meets the midvein.
+ */
+const shadePetiole = (
+  context: CanvasRenderingContext2D,
+  line: readonly RibbonPoint[],
+  shape: Path2D,
+  blade: Polygon,
+) => {
+  const leaves = Math.max(
+    1,
+    line.findIndex(({ x, y }) => !polygonContains(blade, x, y)),
+  );
+  const tapered = line.map((p, k) => ({ ...p, halfWidth: p.halfWidth * Math.min(1, k / leaves) }));
+  const shade = new Path2D();
+  traceRibbon(shade, ribbon(shifted(tapered, -0.7, 0.55)));
+  context.save();
+  context.clip(shape);
+  fillShadowOnly(context, shade, "rgba(59, 61, 66, 0.4)", 2);
+  context.restore();
+};
+
+/**
+ * Veins and petiole lifted out of the tone with an eraser, all in one pass so
+ * that where they overlap the paper isn't lifted twice: not quite clean, with a
+ * faint edge on the wider veins.
+ */
+const drawVeins = (context: CanvasRenderingContext2D, leaf: PreparedLeaf, petiole: Path2D) => {
+  const lifted = new Path2D();
+  const edged = new Path2D();
   for (const vein of leaf.veins) {
     const path = new Path2D();
     traceRibbon(path, ribbon(pencilLine(vein.centre)));
-    if (vein.order <= 2 && vein.halfWidth > 1) {
-      context.strokeStyle = GRAPHITE;
-      context.globalAlpha = 0.35;
-      context.lineWidth = 0.6;
-      context.stroke(path);
-    }
-    context.globalAlpha = 0.85;
-    context.fillStyle = PAPER;
-    context.fill(path);
-    context.globalAlpha = 1;
+    lifted.addPath(path);
+    if (vein.order <= 2 && vein.halfWidth > 1) edged.addPath(path);
   }
+  lifted.addPath(petiole);
+  context.strokeStyle = GRAPHITE;
+  context.globalAlpha = 0.35;
+  context.lineWidth = 0.6;
+  context.stroke(edged);
+  context.globalAlpha = 0.85;
+  context.fillStyle = PAPER;
+  context.fill(lifted);
+  context.globalAlpha = 1;
 };
 
-/** A pencil outline, gone over twice. */
-const drawMargin = (context: CanvasRenderingContext2D, blade: Polygon) => {
+/** A pencil outline, gone over twice, stopping either side of the petiole. */
+const drawMargin = (context: CanvasRenderingContext2D, blade: Polygon, petiole: Path2D) => {
   const first = new Path2D();
   traceRibbon(first, ribbon(wobble(closedLine(blade, 0.55), 1.6, 81)));
   const second = new Path2D();
   traceRibbon(second, ribbon(wobble(closedLine(blade, 0.35), 2.6, 83)));
+  context.save();
+  context.clip(outsideOf(petiole), "evenodd");
   context.fillStyle = GRAPHITE;
   context.globalAlpha = 0.8;
   context.fill(first);
   context.globalAlpha = 0.35;
   context.fill(second);
-  context.globalAlpha = 1;
+  context.restore();
 };
 
-/** The petiole, drawn over the margin, shaded softly on its side away from the light. */
-const drawPetiole = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
+const drawLeaf = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
+  drawGhost(context, leaf.ghost, "rgba(59, 61, 66, 0.3)", [2, 4]);
+  const blade = polygonPath(leaf.blade, leaf.bladeHoles);
   const line = pencilLine(leaf.petiole);
   const { left, right } = ribbon(line);
-  const shape = new Path2D();
-  [...left, ...[...right].reverse()].forEach(({ x, y }, k) => {
-    if (k === 0) shape.moveTo(x, y);
-    else shape.lineTo(x, y);
+  const petiole = new Path2D();
+  traceRibbon(petiole, { left, right });
+  // The petiole is shaded and hatched like the blade, so it carries on from the midvein.
+  const image = paintToneImage([...leaf.blade, ...left, ...right], (tone) => {
+    tone.save();
+    paintBladeTone(leaf, blade)(tone);
+    tone.restore();
+    paintPetioleTone(tone, petiole, blade);
   });
-  shape.closePath();
-  // Only outside the blade, and across the margin line: inside, the lifted-out
-  // midvein already shows the way.
-  const outside = new Path2D();
-  outside.rect(-1e5, -1e5, 2e5, 2e5);
-  outside.addPath(polygonPath(leaf.blade));
-  const margin = new Path2D();
-  traceRibbon(margin, ribbon(closedLine(leaf.blade, 2)));
-  context.save();
-  context.clip(margin);
-  context.fillStyle = PAPER;
-  context.fill(shape);
-  context.restore();
-  context.save();
-  context.clip(outside, "evenodd");
-  context.fillStyle = PAPER;
-  context.fill(shape);
-  const shade = new Path2D();
-  traceRibbon(shade, ribbon(shifted(line, -0.6, 0.5)));
-  context.clip(shape);
-  fillShadowOnly(context, shade, "rgba(59, 61, 66, 0.45)", 1.5);
-  context.restore();
+  const tone = image === undefined ? undefined : toneReader(image);
+  if (image !== undefined && tone !== undefined) {
+    const marks = hatching(leaf, tone);
+    // The blade, then the petiole where it lies outside the blade.
+    for (const clip of [[blade], [outsideOf(blade), petiole]] as const) {
+      context.save();
+      clip.forEach((path) => {
+        context.clip(path, "evenodd");
+      });
+      drawTone(context, image);
+      strokeHatching(context, marks);
+      context.restore();
+    }
+  }
+  drawVeins(context, leaf, petiole);
+  shadePetiole(context, line, petiole, leaf.blade);
+  drawMargin(context, leaf.blade, petiole);
   context.strokeStyle = GRAPHITE;
   context.globalAlpha = 0.8;
   context.lineCap = "round";
   context.lineWidth = 1.1;
   context.stroke(petioleEdges(left, right, leaf.blade));
   context.globalAlpha = 1;
-};
-
-const drawLeaf = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
-  drawGhost(context, leaf.ghost, "rgba(59, 61, 66, 0.3)", [2, 4]);
-  const blade = polygonPath(leaf.blade, leaf.bladeHoles);
-  const image = paintToneImage(leaf.blade, paintBladeTone(leaf, blade));
-  const tone = image === undefined ? undefined : toneReader(image);
-  if (image !== undefined && tone !== undefined) {
-    context.save();
-    context.clip(blade, "evenodd");
-    drawTone(context, image);
-    hatch(context, leaf, tone);
-    context.restore();
-  }
-  drawVeins(context, leaf);
-  drawMargin(context, leaf.blade);
-  drawPetiole(context, leaf);
 };
 
 export const graphiteStudy: Style = {
