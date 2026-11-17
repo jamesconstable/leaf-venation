@@ -43,6 +43,8 @@ const paperGrain = (backdrop: PaperBackdrop) => {
  * laid in showing only very faintly. Painted at a third of the screen's
  * resolution; the browser smooths it as it scales up.
  */
+let washCache: { key: string; canvas: HTMLCanvasElement } | undefined;
+
 const paintWash = (
   context: CanvasRenderingContext2D,
   width: number,
@@ -52,45 +54,52 @@ const paintWash = (
   const scale = 1 / 3;
   /** The height of a stroke, in screen pixels. */
   const stroke = 170;
-  const wash = makeTexture(
-    Math.max(1, Math.ceil(width * scale)),
-    Math.max(1, Math.ceil(height * scale)),
-    (washContext, w, h) => {
-      const image = washContext.createImageData(w, h);
-      for (let j = 0; j < h; j++) {
-        for (let i = 0; i < w; i++) {
-          const [x, y] = [i / scale, j / scale];
-          // Pools and their tide lines.
-          const pool = fractalNoise(x / 320, y / 320, 5, 71);
-          const tide =
-            Math.exp(-(((pool - 0.56) / 0.02) ** 2)) +
-            0.6 * Math.exp(-(((pool - 0.43) / 0.025) ** 2));
-          // Strokes: each band across the sheet carries a slightly different load,
-          // blended softly into the next, with the boundaries wandering.
-          const v = y + 60 * (fractalNoise(x / 600, y / 600, 3, 75) - 0.5);
-          const band = Math.floor(v / stroke);
-          const across = v / stroke - band;
-          const blend =
-            across < 0.15 ? 0.5 + across / 0.3 : across > 0.85 ? 0.5 + (1 - across) / 0.3 : 1;
-          const neighbour = across < 0.5 ? band - 1 : band + 1;
-          const load = hash2(band, 0, 72) * blend + hash2(neighbour, 0, 72) * (1 - blend) - 0.5;
-          const grain = fractalNoise(x / 40, y / 40, 3, 73) - 0.5;
-          const pigment = Math.min(
-            1,
-            Math.max(0, 0.55 + 0.9 * (pool - 0.5) + 0.16 * load + 0.2 * grain + 0.08 * tide),
-          );
-          const k = 4 * (j * w + i);
-          for (let c = 0; c < 3; c++) {
-            image.data[k + c] = Math.round(
-              (light[c] ?? 0) + ((dark[c] ?? 0) - (light[c] ?? 0)) * pigment,
-            );
-          }
-          image.data[k + 3] = 255;
-        }
-      }
-      washContext.putImageData(image, 0, 0);
-    },
-  );
+  // Kept for the last size and colours, so repainting (e.g. while zooming) is cheap.
+  const key = [width, height, ...light, ...dark].join();
+  const wash =
+    washCache?.key === key
+      ? washCache.canvas
+      : makeTexture(
+          Math.max(1, Math.ceil(width * scale)),
+          Math.max(1, Math.ceil(height * scale)),
+          (washContext, w, h) => {
+            const image = washContext.createImageData(w, h);
+            for (let j = 0; j < h; j++) {
+              for (let i = 0; i < w; i++) {
+                const [x, y] = [i / scale, j / scale];
+                // Pools and their tide lines.
+                const pool = fractalNoise(x / 320, y / 320, 5, 71);
+                const tide =
+                  Math.exp(-(((pool - 0.56) / 0.02) ** 2)) +
+                  0.6 * Math.exp(-(((pool - 0.43) / 0.025) ** 2));
+                // Strokes: each band across the sheet carries a slightly different load,
+                // blended softly into the next, with the boundaries wandering.
+                const v = y + 60 * (fractalNoise(x / 600, y / 600, 3, 75) - 0.5);
+                const band = Math.floor(v / stroke);
+                const across = v / stroke - band;
+                const blend =
+                  across < 0.15 ? 0.5 + across / 0.3 : across > 0.85 ? 0.5 + (1 - across) / 0.3 : 1;
+                const neighbour = across < 0.5 ? band - 1 : band + 1;
+                const load =
+                  hash2(band, 0, 72) * blend + hash2(neighbour, 0, 72) * (1 - blend) - 0.5;
+                const grain = fractalNoise(x / 40, y / 40, 3, 73) - 0.5;
+                const pigment = Math.min(
+                  1,
+                  Math.max(0, 0.55 + 0.9 * (pool - 0.5) + 0.16 * load + 0.2 * grain + 0.08 * tide),
+                );
+                const k = 4 * (j * w + i);
+                for (let c = 0; c < 3; c++) {
+                  image.data[k + c] = Math.round(
+                    (light[c] ?? 0) + ((dark[c] ?? 0) - (light[c] ?? 0)) * pigment,
+                  );
+                }
+                image.data[k + 3] = 255;
+              }
+            }
+            washContext.putImageData(image, 0, 0);
+          },
+        );
+  washCache = { key, canvas: wash };
   context.imageSmoothingQuality = "high";
   context.drawImage(wash, 0, 0, wash.width / scale, wash.height / scale);
 };

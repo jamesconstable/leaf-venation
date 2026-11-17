@@ -8,7 +8,19 @@ import { stageCentre } from "./layout";
  * What lies behind the leaf: layers of out-of-focus foliage that drift slowly
  * (animated by CSS, so they cost almost nothing), or a sheet of paper.
  */
-export const Backdrop = (props: { backdrop: BackdropSpec; outline: Polygon }) => {
+/** A magnification applied to the backdrop: screen = scale × point + (dx, dy). */
+export interface Magnify {
+  readonly scale: number;
+  readonly dx: number;
+  readonly dy: number;
+}
+
+export const Backdrop = (props: {
+  backdrop: BackdropSpec;
+  outline: Polygon;
+  /** If given, the backdrop is magnified with the leaf. */
+  magnify?: Magnify | undefined;
+}) => {
   let container: HTMLDivElement | undefined;
   const [size, setSize] = createSignal({ width: 0, height: 0, ratio: 1 });
   onMount(() => {
@@ -43,14 +55,19 @@ export const Backdrop = (props: { backdrop: BackdropSpec; outline: Polygon }) =>
 
   const paintSheet = (canvas: HTMLCanvasElement) => {
     createEffect(() => {
-      const { backdrop } = props;
+      const { backdrop, magnify } = props;
       const { width, height, ratio } = size();
       if (backdrop.kind !== "paper" || width === 0) return;
       canvas.width = Math.round(width * ratio);
       canvas.height = Math.round(height * ratio);
       const context = canvas.getContext("2d");
       if (context === null) return;
-      context.scale(ratio, ratio);
+      // Magnified, the sheet is painted larger (so its grain stays crisp); plain
+      // paper colour fills anywhere panning reveals beyond its edge.
+      context.fillStyle = backdrop.paper;
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      const { scale, dx, dy } = magnify ?? { scale: 1, dx: 0, dy: 0 };
+      context.setTransform(ratio * scale, 0, 0, ratio * scale, ratio * dx, ratio * dy);
       paintPaper(context, width, height, backdrop, stageCentre(width));
     });
   };
@@ -59,16 +76,28 @@ export const Backdrop = (props: { backdrop: BackdropSpec; outline: Polygon }) =>
     <div ref={(element) => (container = element)} class="backdrop" aria-hidden="true">
       <Switch>
         <Match when={props.backdrop.kind === "bokeh"}>
-          <For each={BOKEH_LAYERS.map((_, layer) => layer)}>
-            {(layer) => (
-              <canvas
-                ref={(canvas) => {
-                  paintLayer(canvas, layer);
-                }}
-                class={`bokeh-layer bokeh-layer-${layer}`}
-              />
-            )}
-          </For>
+          {/* Out-of-focus layers are soft anyway, so magnifying them as they are is enough. */}
+          <div
+            class="bokeh"
+            style={
+              props.magnify === undefined
+                ? {}
+                : {
+                    transform: `translate(${props.magnify.dx}px, ${props.magnify.dy}px) scale(${props.magnify.scale})`,
+                  }
+            }
+          >
+            <For each={BOKEH_LAYERS.map((_, layer) => layer)}>
+              {(layer) => (
+                <canvas
+                  ref={(canvas) => {
+                    paintLayer(canvas, layer);
+                  }}
+                  class={`bokeh-layer bokeh-layer-${layer}`}
+                />
+              )}
+            </For>
+          </div>
         </Match>
         <Match when={props.backdrop.kind === "paper"}>
           <canvas ref={paintSheet} class="paper" />

@@ -13,7 +13,7 @@ import { Choice, Section, Slider, Toggle } from "./controls";
 import { LeafCanvas } from "./LeafCanvas";
 import { resolveOverlays, setByStyle, type ChosenOverlays } from "./overlayChoice";
 import { StyleSwatches } from "./StyleSwatches";
-import { noZoom, zoomAbout, type Zoom } from "./zoom";
+import { noZoom, zoomAbout, zoomTransform, type Zoom } from "./zoom";
 import { ZoomControls } from "./ZoomControls";
 
 const newRandomSeed = () => Math.random().toString(36).slice(2, 8);
@@ -64,6 +64,7 @@ export const App = () => {
   // Zoom: only the leaf is magnified, not the page.
   const [zoom, setZoom] = createSignal<Zoom>(noZoom);
   const [stageFrame, setStageFrame] = createSignal<Frame>({ left: 0, top: 0, width: 1, height: 1 });
+  const [zoomBackdrop, setZoomBackdrop] = createSignal(false);
 
   // Playback.
   const [stepsPerFrame, setStepsPerFrame] = createSignal(2);
@@ -136,7 +137,11 @@ export const App = () => {
   return (
     <div class="app" style={themeVariables(style())}>
       <main class="stage">
-        <Backdrop backdrop={style().backdrop} outline={blade()?.outer ?? []} />
+        <Backdrop
+          backdrop={style().backdrop}
+          outline={blade()?.outer ?? []}
+          magnify={zoomBackdrop() ? zoomTransform(stageFrame(), zoom()) : undefined}
+        />
         <LeafCanvas
           zoom={zoom()}
           onZoom={setZoom}
@@ -368,6 +373,11 @@ export const App = () => {
         <Section title="Display" open={false}>
           <Toggle label="Auxin sources" {...overlayToggle("auxinSources")} />
           <Toggle label="Vein nodes" {...overlayToggle("veinNodes")} />
+          <Toggle
+            label="Zoom the background too"
+            checked={zoomBackdrop()}
+            onChange={setZoomBackdrop}
+          />
           <Slider
             label="Vein width exponent"
             value={veinWidthExponent()}

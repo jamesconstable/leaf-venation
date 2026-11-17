@@ -44,6 +44,12 @@ body {
   height: 100%;
 }
 
+.bokeh {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+
 .bokeh-layer {
   position: absolute;
   left: -7.5%;
