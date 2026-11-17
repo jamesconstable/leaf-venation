@@ -6,7 +6,7 @@ import {
   pinnedPattern,
   polygonPath,
 } from "../canvas";
-import { hash2, tileableNoise } from "../noise";
+import { tileableCells, tileableNoise } from "../noise";
 import { ribbon, traceRibbon, type RibbonPoint } from "../ribbon";
 import type { PreparedLeaf, PreparedVein, Style } from "../style";
 
@@ -85,27 +85,10 @@ let cells: HTMLCanvasElement | undefined;
 const cellTexture = () =>
   (cells ??= makeTexture(TILE, TILE, (context, width, height) => {
     const size = 8;
-    const columns = width / size;
-    const rows = height / size;
-    const site = (i: number, j: number) => {
-      const wi = ((i % columns) + columns) % columns;
-      const wj = ((j % rows) + rows) % rows;
-      return { x: (i + hash2(wi, wj, 3)) * size, y: (j + hash2(wi, wj, 4)) * size };
-    };
     const image = context.createImageData(width, height);
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        const [ci, cj] = [Math.floor(x / size), Math.floor(y / size)];
-        let f1 = Infinity;
-        let f2 = Infinity;
-        for (let dj = -2; dj <= 2; dj++) {
-          for (let di = -2; di <= 2; di++) {
-            const s = site(ci + di, cj + dj);
-            const d = Math.hypot(s.x - x, s.y - y);
-            if (d < f1) [f1, f2] = [d, f1];
-            else if (d < f2) f2 = d;
-          }
-        }
+        const { f1, f2 } = tileableCells(x, y, width, height, size, 3);
         // Cell walls glow pale, like the veins; the cells themselves are denser and darker.
         const wall = 1 - Math.min(1, (f2 - f1) / 2.2);
         const centre = Math.max(0, 1 - f1 / size);

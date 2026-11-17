@@ -71,3 +71,38 @@ export const tileableNoise = (
     f(x - width, y - height) * wx * wy
   );
 };
+
+/**
+ * Cellular (Worley) noise that tiles seamlessly over `width` by `height`, with
+ * one jittered site per `size` square: the distances from (x, y) to the nearest
+ * site (`f1`) and the second nearest (`f2`). Cell walls lie where the two are
+ * close.
+ */
+export const tileableCells = (
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  size: number,
+  seed = 0,
+): { f1: number; f2: number } => {
+  const columns = width / size;
+  const rows = height / size;
+  const [ci, cj] = [Math.floor(x / size), Math.floor(y / size)];
+  let f1 = Infinity;
+  let f2 = Infinity;
+  for (let dj = -2; dj <= 2; dj++) {
+    for (let di = -2; di <= 2; di++) {
+      const [i, j] = [ci + di, cj + dj];
+      const wi = ((i % columns) + columns) % columns;
+      const wj = ((j % rows) + rows) % rows;
+      const d = Math.hypot(
+        (i + hash2(wi, wj, seed)) * size - x,
+        (j + hash2(wi, wj, seed + 1)) * size - y,
+      );
+      if (d < f1) [f1, f2] = [d, f1];
+      else if (d < f2) f2 = d;
+    }
+  }
+  return { f1, f2 };
+};
