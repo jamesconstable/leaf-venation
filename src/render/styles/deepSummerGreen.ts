@@ -1,3 +1,4 @@
+import { polygonContains } from "../../geometry/region";
 import { blurField } from "../blur";
 import { drawGhost, fillShadowOnly, polygonPath } from "../canvas";
 import { valueNoise } from "../noise";
@@ -38,33 +39,51 @@ const heights = (leaf: PreparedLeaf, blade: Path2D) => {
       context.fillStyle = "black";
       paint(context);
     });
+  // Each vein creases the blade along its centre line, more deeply for wider
+  // veins (by rank, not drawn width, so the vein width exponent matters little).
   const widest = leaf.veins.reduce((max, v) => Math.max(max, v.halfWidth), 0.3);
-  const all = new Path2D();
-  const main = new Path2D();
-  for (const vein of leaf.veins) {
-    traceRibbon(all, vein.ribbon);
-    if (vein.halfWidth > 0.3 * widest) traceRibbon(main, vein.ribbon);
-  }
+  const depth = (halfWidth: number) => Math.min(1, 0.3 + 0.7 * Math.sqrt(halfWidth / widest));
   const bladeImage = mask((context) => {
     context.fill(blade, "evenodd");
   });
-  const veinImage = mask((context) => {
-    context.fill(all);
+  const creaseImage = mask((context) => {
+    context.lineWidth = 1.5;
+    context.lineJoin = "round";
+    for (const vein of leaf.veins) {
+      context.globalAlpha = depth(vein.halfWidth);
+      context.beginPath();
+      vein.centre.forEach(({ x, y }, k) => {
+        if (k === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+      });
+      context.stroke();
+    }
   });
   const mainImage = mask((context) => {
-    context.fill(main);
+    context.lineWidth = 3;
+    context.lineJoin = "round";
+    for (const vein of leaf.veins) {
+      if (vein.halfWidth <= 0.3 * widest) continue;
+      context.beginPath();
+      vein.centre.forEach(({ x, y }, k) => {
+        if (k === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+      });
+      context.stroke();
+    }
   });
-  if (bladeImage === undefined || veinImage === undefined || mainImage === undefined) return;
+  if (bladeImage === undefined || creaseImage === undefined || mainImage === undefined) return;
   const { canvas, scale, left, top } = bladeImage;
   const [width, height] = [canvas.width, canvas.height];
   const length = leaf.leafLength * scale;
 
   const dome = coverage(bladeImage);
   blurField(dome, width, height, 0.05 * length);
-  const narrow = coverage(veinImage);
-  const plump = narrow.slice();
-  blurField(narrow, width, height, 1);
-  blurField(plump, width, height, 3);
+  // A sharp crease, and the tissue folding gently down into it.
+  const sharp = coverage(creaseImage);
+  const fold = sharp.slice();
+  blurField(sharp, width, height, 1);
+  blurField(fold, width, height, 3);
   const broad = coverage(mainImage);
   blurField(broad, width, height, 0.02 * length);
 
@@ -76,10 +95,10 @@ const heights = (leaf: PreparedLeaf, blade: Path2D) => {
       const [x, y] = [left + i / scale - leaf.base.x, top + j / scale - leaf.base.y];
       const pebble = valueNoise(x / 3, y / 3, 7);
       field[k] =
-        0.12 * length * (dome[k] ?? 0) -
-        1.6 * (narrow[k] ?? 0) -
-        3 * (plump[k] ?? 0) -
-        0.03 * length * (broad[k] ?? 0) +
+        0.08 * length * (dome[k] ?? 0) -
+        3 * (sharp[k] ?? 0) -
+        9 * (fold[k] ?? 0) -
+        0.05 * length * (broad[k] ?? 0) +
         0.2 * pebble;
     }
   }
@@ -126,19 +145,17 @@ const shadeBlade = (leaf: PreparedLeaf, blade: Path2D) => {
   return { canvas: out, left, top, scale };
 };
 
-/** Pale veins, down in their valleys: wider ones have a little shade along the side facing the light. */
+/** The midvein's colour, which the petiole carries on. */
+const MIDVEIN = "rgb(206, 232, 140)";
+
+/** Pale veins, down in their creases (the height field does their shading). */
 const drawVeins = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
-  const shade = new Path2D();
-  for (const vein of leaf.veins) {
-    if (vein.halfWidth > 1) traceRibbon(shade, ribbon(shifted(vein.centre, 0.9, 1.2)));
-  }
-  fillShadowOnly(context, shade, "rgba(8, 40, 10, 0.45)", 1.5);
   for (const vein of leaf.veins) {
     const path = new Path2D();
     traceRibbon(path, vein.ribbon);
     context.fillStyle =
       vein.order === 1
-        ? "rgba(206, 232, 140, 0.95)"
+        ? MIDVEIN
         : vein.order === 2
           ? "rgba(190, 226, 126, 0.8)"
           : "rgba(170, 214, 108, 0.6)";
@@ -146,22 +163,66 @@ const drawVeins = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
   }
 };
 
-const drawPetiole = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
+/** Everything but the given shape. */
+const outsideOf = (shape: Path2D) => {
+  const outside = new Path2D();
+  outside.rect(-1e5, -1e5, 2e5, 2e5);
+  outside.addPath(shape);
+  return outside;
+};
+
+/**
+ * The petiole, in the midvein's colour. Its rounded shading and its shadow on
+ * whatever lies behind belong to the part below the blade: the shading tapers
+ * away along the midvein, so the two meet without a seam.
+ */
+const drawPetiole = (context: CanvasRenderingContext2D, leaf: PreparedLeaf, blade: Path2D) => {
+  const line = leaf.petiole;
   const shape = new Path2D();
-  traceRibbon(shape, ribbon(leaf.petiole));
+  traceRibbon(shape, ribbon(line));
+  context.save();
+  context.clip(outsideOf(blade), "evenodd");
   fillShadowOnly(context, shape, "rgba(4, 16, 2, 0.45)", 3);
-  context.fillStyle = "rgb(150, 196, 82)";
+  context.restore();
+  context.fillStyle = MIDVEIN;
   context.fill(shape);
+  const leaves = Math.max(
+    1,
+    line.findIndex(({ x, y }) => !polygonContains(leaf.blade, x, y)),
+  );
+  const tapered = line.map((p, k) => ({
+    ...p,
+    halfWidth: p.halfWidth * Math.min(1, Math.max(0, (2 * k) / leaves - 1)),
+  }));
   context.save();
   context.clip(shape);
   const shade = new Path2D();
-  traceRibbon(shade, ribbon(shifted(leaf.petiole, -0.7, 0.6)));
-  fillShadowOnly(context, shade, "rgba(30, 70, 14, 0.6)", 1.5);
+  traceRibbon(shade, ribbon(shifted(tapered, -0.7, 0.6)));
+  fillShadowOnly(context, shade, "rgba(40, 90, 16, 0.55)", 1.5);
   const highlight = new Path2D();
-  traceRibbon(highlight, ribbon(shifted(leaf.petiole, 0.4, 0.25)));
-  context.fillStyle = "rgba(230, 246, 180, 0.6)";
+  traceRibbon(highlight, ribbon(shifted(tapered, 0.4, 0.25)));
+  context.fillStyle = "rgba(240, 250, 200, 0.6)";
   context.fill(highlight);
   context.restore();
+};
+
+/** A fine edge to the blade, pale where its rim catches the light and shaded on the far side. */
+const drawEdge = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
+  const edge = new Path2D();
+  traceRibbon(edge, ribbon(closedLine(leaf.blade, 0.6)));
+  const half = 0.4 * leaf.leafLength;
+  const [cx, cy] = [leaf.base.x, leaf.base.y - 0.5 * leaf.leafLength];
+  const gradient = context.createLinearGradient(
+    cx - LIGHT.x * half,
+    cy - LIGHT.y * half,
+    cx + LIGHT.x * half,
+    cy + LIGHT.y * half,
+  );
+  gradient.addColorStop(0, "rgba(14, 48, 14, 0.7)");
+  gradient.addColorStop(0.5, "rgba(80, 140, 50, 0.5)");
+  gradient.addColorStop(1, "rgba(206, 236, 140, 0.75)");
+  context.fillStyle = gradient;
+  context.fill(edge);
 };
 
 const drawLeaf = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
@@ -177,12 +238,8 @@ const drawLeaf = (context: CanvasRenderingContext2D, leaf: PreparedLeaf) => {
   }
   drawVeins(context, leaf);
   context.restore();
-  // A fine, pale edge, where the blade's rim catches the light.
-  const edge = new Path2D();
-  traceRibbon(edge, ribbon(closedLine(leaf.blade, 0.6)));
-  context.fillStyle = "rgba(196, 230, 130, 0.7)";
-  context.fill(edge);
-  drawPetiole(context, leaf);
+  drawEdge(context, leaf);
+  drawPetiole(context, leaf, blade);
 };
 
 export const deepSummerGreen: Style = {
