@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boxBlur } from "./blur";
+import { blurField, boxBlur } from "./blur";
 
 const image = (width: number, height: number, value: (x: number, y: number) => number) => {
   const pixels = new Uint8ClampedArray(width * height * 4);
@@ -33,5 +33,17 @@ describe("boxBlur", () => {
     const before = [...pixels];
     boxBlur(pixels, 4, 4, 0);
     expect([...pixels]).toEqual(before);
+  });
+});
+
+describe("blurField", () => {
+  it("keeps the total and spreads a point symmetrically", () => {
+    const values = new Float32Array(21 * 21);
+    values[10 * 21 + 10] = 1;
+    blurField(values, 21, 21, 2);
+    const total = values.reduce((sum, v) => sum + v, 0);
+    expect(total).toBeCloseTo(1, 5);
+    expect(values[10 * 21 + 12]).toBeCloseTo(values[10 * 21 + 8] ?? -1, 6);
+    expect(values[12 * 21 + 10]).toBeCloseTo(values[8 * 21 + 10] ?? -1, 6);
   });
 });
