@@ -24,5 +24,9 @@ Each milestone is developed on its own branch with small, logical commits; tests
 - Slower playback than one step per frame (e.g. one step every few frames): isogonic growth is most satisfying to watch at the slowest speed, and performance leaves plenty of headroom.
 - Playwright screenshot tests for styles.
 - Revisit the panel's styling: foil-stamped selections were tried and set aside for flat colour (see insights).
-- Speed up the stippled ink style: it takes about 25 ms a frame while a full-size leaf grows (40 fps), against 8 ms for every other style. Painting the tone map at lower resolution, or caching the folds between frames, are candidates.
-- Ink style: the finest veins fade into the brightest parts of the blade. Raising the stipple floor flattened the contrast, and stronger or wider shade beside narrow veins made them look lumpy; still to solve.
+- Speed up the stippled ink style: it takes about 25 ms a frame while a full-size leaf grows (40 fps), against 8 ms for most styles. Painting the tone map at lower resolution, or caching the folds between frames, are candidates. Deep summer's height field takes about 17 ms (60 fps), most of it in reading back and blurring its masks.
+- Ink style: the finest veins fade into the brightest parts of the blade. Raising the stipple floor flattened the contrast, and stronger or wider shade beside narrow veins made them look lumpy. The lighting debug style shows the curl term dominates the tone (see insights), so taming it is the next thing to try.
+- Remove the temporary lighting debug style before going public.
+- Autumn's backdrop needs more experimenting: lighter and hazier, closer to the reference photo.
+- Spring green, autumn: the petiole looks wider and paler than the midvein where it overlaps it inside the blade.
+- Damage and skeletonisation as a setting for every style.
