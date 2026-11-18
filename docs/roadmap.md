@@ -25,9 +25,9 @@ Each milestone is developed on its own branch with small, logical commits; tests
 - Playwright screenshot tests for styles.
 - Revisit the panel's styling: foil-stamped selections were tried and set aside for flat colour (see insights).
 - Speed up the stippled ink style further: with the current defaults a full-size frame takes about 28 ms (from 64 ms), graphite about 23 ms, deep summer about 17 ms, spring green about 15 ms with living cells. About 10 ms of ink's time is its tone map (mostly the blurred fills for the folds, each with a high fixed cost), and 13 ms the blade's stippling. A stipple threshold done per pixel on the GPU (ordered dithering) would be far faster, but needs WebGL: Canvas 2D has no per-pixel threshold, and `context.filter` isn't supported in Safari.
-- Living mesophyll cells: a prototype in spring green; decide whether to keep them, tune them, and extend them to the other styles with cell textures.
+- Living mesophyll cells: a prototype in spring green, still not satisfying (cells end at veins now, but the texture looks wrong). Return to it with the user's guidance; an interactive walkthrough of the approach and the alternatives tried is at https://claude.ai/artifact/UgDgvSC2N8rL4honckQwM2 (private). Then decide whether to extend cells to the other styles.
+- Style options (deep summer, botanical ink) and the lighting debug style are development-only; settle on the options' values, then decide whether any deserve a place in the public panel.
 - Ink style: the finest veins fade into the brightest parts of the blade. Raising the stipple floor flattened the contrast, and stronger or wider shade beside narrow veins made them look lumpy. The lighting debug style shows the curl term dominates the tone (see insights), so taming it is the next thing to try.
-- Remove the temporary lighting debug style before going public.
 - Leaf zoom: check pinching and dragging on a touch screen, and the controls on narrow screens; zooming spring green below 2× (about 50 ms a frame) and deep summer (about 100 ms at 4×) could be quicker.
 - Autumn's backdrop needs more experimenting: lighter and hazier, closer to the reference photo.
 - Spring green, autumn: the petiole looks wider and paler than the midvein where it overlaps it inside the blade.

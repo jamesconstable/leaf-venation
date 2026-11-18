@@ -29,6 +29,8 @@ Dependencies only point downward; a lint rule enforces it. `simulation/` exposes
 
 - The simulation runs in a **Web Worker** and sends snapshots (transferable typed arrays) to the main thread. Draw speed means simulation steps per frame.
 - **Rendering**: each frame, `prepareLeaf` turns a snapshot into screen geometry (current blade, ghost outline, and each vein as a smoothed, tapering ribbon along its vein path), and the style paints it onto a transparent Canvas2D layer above a backdrop. Backdrops need no WebGL so far: bokeh layers are painted at low resolution, blurred, scaled up by the browser and drifted with CSS transforms; paper is a generated texture. WebGL remains an option behind the same interfaces if a style needs it. **SVG export** is a pure function of the simulation model, never a capture of the screen.
+- **Leaf zoom** magnifies the drawing through the canvas transform rather than redrawing the leaf larger, so every mark grows with it. Bitmaps a style paints offscreen cover only the visible area and follow the magnification, up to a per-style limit. Backdrops stay still unless "Zoom the background too" is on.
+- **Development features**: a `devFeatures` flag, true only under the Vite dev server, guards the lighting debug style and the styles' own options (deep summer's realism touches, botanical ink's stipple settings). The built site leaves out the debug style and uses each option's initial value.
 - **Spatial indexing**: an incrementally updated uniform grid hash for nearest-node and birth-distance queries; `delaunator` triangulation rebuilt every step for closed venation. Both sit behind one interface and are tested against brute-force versions.
 
 ## Simulation
@@ -83,6 +85,7 @@ Dependencies only point downward; a lint rule enforces it. `simulation/` exposes
 
 - Coloured styles: rich colours, with a bokeh background of similarly shaped leaves (animated where performance allows, with parallax and wind as polish).
 - Drawing styles: papery texture, with pencil or ink strokes (wobble, pressure variation).
+- Spring green's blade shows **living mesophyll cells**: a power diagram of cell sites that appear as the leaf grows and fade out near veins, so cells end at the veins. A prototype, not yet satisfying.
 - Veins are smooth curves through the vein nodes, tapering continuously, with clean joins where they branch.
 - **Card stock panel**: a sheet of fine card with a subtle paper texture, embossed rules and letterpress headings; selected options are stamped in the style's accent colour, set by per-style CSS variables. (Glass, and then metallic foil, were tried and set aside.)
 - **Typography**: EB Garamond (names and headings; botanical names in italics) and Inter (controls), self-hosted. Technical study uses a drafting-style font for annotations.
