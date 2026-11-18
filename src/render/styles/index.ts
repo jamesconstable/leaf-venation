@@ -1,3 +1,4 @@
+import { devFeatures } from "../../features";
 import type { Style } from "../style";
 import { autumn } from "./autumn";
 import { botanicalInk } from "./botanicalInk";
@@ -18,8 +19,8 @@ export const styles: readonly Style[] = [
   graphiteStudy,
   technicalStudy,
   skeletonLeaf,
-  // Temporary, for studying the drawing styles' lighting.
-  lightingDebug,
+  // For studying the drawing styles' lighting.
+  ...(devFeatures ? [lightingDebug] : []),
 ];
 
 export const defaultStyle: Style = springGreen;

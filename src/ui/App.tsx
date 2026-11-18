@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { leafOutlines } from "../catalogue/leafOutlines";
+import { devFeatures } from "../features";
 import { outlineRegion } from "../outline/outline";
 import { isStarShapedFrom } from "../outline/starShaped";
 import type { Frame, Overlays } from "../render/leafRenderer";
@@ -198,7 +199,8 @@ export const App = () => {
           />
         </Section>
 
-        <Show when={style().options}>
+        {/* Styles' own options are for experimenting while developing; the built site uses their initial values. */}
+        <Show when={devFeatures && style().options}>
           {(options) => (
             <Section title="Style options">
               <For each={options()}>
