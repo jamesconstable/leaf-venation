@@ -133,15 +133,16 @@ describe.each(venations)("%s venation", (venation) => {
         for (let i = 0; i < 60 && state.status === "growing"; i++) {
           state = step(state);
           const sources = state.auxinSources;
+          // One assertion per step on the closest pair: an assertion per pair is slow.
+          let closest = Infinity;
           for (let a = 0; a < sources.length; a++) {
             for (let b = a + 1; b < sources.length; b++) {
               const [sa, sb] = [sources[a], sources[b]];
               if (sa === undefined || sb === undefined) continue;
-              expect(distance(sa.x, sa.y, sb.x, sb.y)).toBeGreaterThanOrEqual(
-                state.config.birthDistance,
-              );
+              closest = Math.min(closest, distance(sa.x, sa.y, sb.x, sb.y));
             }
           }
+          expect(closest).toBeGreaterThanOrEqual(state.config.birthDistance);
         }
       }),
       propertyOptions,
