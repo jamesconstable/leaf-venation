@@ -1,15 +1,29 @@
-import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { leafOutlines } from "../catalogue/leafOutlines";
+import { devFeatures } from "../features";
 import { outlineRegion } from "../outline/outline";
 import { isStarShapedFrom } from "../outline/starShaped";
-import type { Overlays } from "../render/plainRenderer";
+import type { Frame, Overlays } from "../render/leafRenderer";
+import { styleOptionValues, type Style, type StyleOptionValues } from "../render/style";
+import { defaultStyle, styles } from "../render/styles";
 import { simulationConfig, type Growth, type Venation } from "../simulation/simulation";
 import type { VenationSnapshot } from "../simulation/snapshot";
 import { SimulationClient } from "../worker/simulationClient";
+import { Backdrop } from "./Backdrop";
 import { Choice, Section, Slider, Toggle } from "./controls";
 import { LeafCanvas } from "./LeafCanvas";
+import { resolveOverlays, setByStyle, type ChosenOverlays } from "./overlayChoice";
+import { StyleSwatches } from "./StyleSwatches";
+import { noZoom, zoomAbout, zoomTransform, type Zoom } from "./zoom";
+import { ZoomControls } from "./ZoomControls";
 
 const newRandomSeed = () => Math.random().toString(36).slice(2, 8);
+
+const growthNames = {
+  none: "no growth",
+  marginal: "marginal growth",
+  isogonic: "isogonic growth",
+} as const;
 
 const statusLabels = {
   growing: "Growing…",
@@ -21,8 +35,8 @@ export const App = () => {
   // Simulation parameters: changing any of these restarts the simulation.
   const [outlineId, setOutlineId] = createSignal(leafOutlines[0]?.id ?? "");
   const [venation, setVenation] = createSignal<Venation>("open");
-  const [killDistance, setKillDistance] = createSignal(0.04);
-  const [birthDistance, setBirthDistance] = createSignal(0.05);
+  const [killDistance, setKillDistance] = createSignal(0.005);
+  const [birthDistance, setBirthDistance] = createSignal(0.02);
   const [dartDensity, setDartDensity] = createSignal(300);
   const [growthType, setGrowthType] = createSignal<Growth["type"]>("marginal");
   const [initialSize, setInitialSize] = createSignal(0.2);
@@ -31,8 +45,27 @@ export const App = () => {
   const [randomSeed, setRandomSeed] = createSignal(newRandomSeed());
 
   // Render settings: changing these redraws without restarting.
-  const [overlays, setOverlays] = createSignal<Overlays>({ auxinSources: true, veinNodes: false });
+  const [style, setStyle] = createSignal<Style>(defaultStyle);
+  const [chosenOverlays, setChosenOverlays] = createSignal<ChosenOverlays>({});
+  const overlays = createMemo(() => resolveOverlays(style(), chosenOverlays()));
+  const overlayToggle = (key: keyof Overlays) => ({
+    checked: overlays()[key],
+    note: setByStyle(style(), chosenOverlays(), key) ? "Switched on by this style" : undefined,
+    onChange: (checked: boolean) => setChosenOverlays({ ...chosenOverlays(), [key]: checked }),
+  });
   const [veinWidthExponent, setVeinWidthExponent] = createSignal(2);
+  // The viewer's choices for each style's own options, by style id.
+  const [styleOptions, setStyleOptions] = createSignal<Readonly<Record<string, StyleOptionValues>>>(
+    {},
+  );
+  const chosenOptions = () => styleOptions()[style().id] ?? {};
+  const chooseOption = (id: string, value: number | boolean) =>
+    setStyleOptions({ ...styleOptions(), [style().id]: { ...chosenOptions(), [id]: value } });
+
+  // Zoom: only the leaf is magnified, not the page.
+  const [zoom, setZoom] = createSignal<Zoom>(noZoom);
+  const [stageFrame, setStageFrame] = createSignal<Frame>({ left: 0, top: 0, width: 1, height: 1 });
+  const [zoomBackdrop, setZoomBackdrop] = createSignal(false);
 
   // Playback.
   const [stepsPerFrame, setStepsPerFrame] = createSignal(2);
@@ -103,9 +136,108 @@ export const App = () => {
   const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
 
   return (
-    <div class="app">
+    <div class="app" style={themeVariables(style())}>
+      <main class="stage">
+        <Backdrop
+          backdrop={style().backdrop}
+          outline={blade()?.outer ?? []}
+          magnify={zoomBackdrop() ? zoomTransform(stageFrame(), zoom()) : undefined}
+        />
+        <LeafCanvas
+          zoom={zoom()}
+          onZoom={setZoom}
+          onFrame={setStageFrame}
+          scene={{
+            blade: config()?.blade ?? { outer: [], holes: [], bounds: emptyBounds, area: 0 },
+            killDistance: config()?.killDistance ?? 0,
+            snapshot: snapshot(),
+          }}
+          settings={{
+            style: style(),
+            overlays: overlays(),
+            veinWidthExponent: veinWidthExponent(),
+            styleOptions: chosenOptions(),
+          }}
+        />
+        <div class="corner">
+          <ZoomControls
+            zoom={zoom()}
+            onZoom={(scale) => {
+              const frame = stageFrame();
+              const centre = { x: frame.left + frame.width / 2, y: frame.top + frame.height / 2 };
+              setZoom(zoomAbout(frame, zoom(), scale, centre));
+            }}
+            onReset={() => setZoom(noZoom)}
+          />
+          <p class="caption" aria-live="polite">
+            <span>
+              <span class="caption-title">
+                {leafOutlines.find(({ id }) => id === outlineId())?.name}
+              </span>
+              {` · ${venation()} venation · ${growthNames[growthType()]}`}
+            </span>
+            <span class="caption-status">
+              {snapshot() === undefined
+                ? "Starting…"
+                : `${statusLabels[snapshot()?.status ?? "growing"]} Step ${snapshot()?.stepCount ?? 0}, ${(snapshot()?.xs.length ?? 0).toLocaleString()} vein nodes`}
+            </span>
+          </p>
+        </div>
+      </main>
+
       <aside class="panel">
         <h1>Leaf Venation</h1>
+
+        <Section title="Style">
+          <StyleSwatches
+            styles={styles}
+            selected={style()}
+            blade={config()?.blade}
+            snapshot={snapshot()}
+            veinWidthExponent={veinWidthExponent()}
+            onSelect={setStyle}
+          />
+        </Section>
+
+        {/* Styles' own options are for experimenting while developing; the built site uses their initial values. */}
+        <Show when={devFeatures && style().options}>
+          {(options) => (
+            <Section title="Style options">
+              <For each={options()}>
+                {(option) => {
+                  const value = () => styleOptionValues(style(), chosenOptions())[option.id];
+                  return option.kind === "toggle" ? (
+                    <Toggle
+                      label={option.label}
+                      checked={value() === true}
+                      onChange={(checked) => chooseOption(option.id, checked)}
+                    />
+                  ) : (
+                    <Slider
+                      label={option.label}
+                      value={typeof value() === "number" ? Number(value()) : option.initial}
+                      min={option.min}
+                      max={option.max}
+                      step={option.step}
+                      format={(v) => String(Number(v.toFixed(4)))}
+                      onCommit={(v) => chooseOption(option.id, v)}
+                    />
+                  );
+                }}
+              </For>
+              <div class="button-row">
+                <button
+                  type="button"
+                  disabled={Object.keys(chosenOptions()).length === 0}
+                  onClick={() => setStyleOptions({ ...styleOptions(), [style().id]: {} })}
+                  title="Return this style's options to their suggested settings"
+                >
+                  Reset style options
+                </button>
+              </div>
+            </Section>
+          )}
+        </Show>
 
         <Section title="Leaf">
           <Choice
@@ -129,7 +261,7 @@ export const App = () => {
               setVenation(value);
               // Closed patterns need the smallest kill distance (the paper uses one vein
               // segment length); with a large one they look just like open patterns.
-              setKillDistance(value === "closed" ? 0 : 0.04);
+              setKillDistance(value === "closed" ? 0 : 0.005);
             }}
           />
         </Section>
@@ -178,7 +310,7 @@ export const App = () => {
           </Show>
         </Section>
 
-        <Section title="Simulation">
+        <Section title="Simulation" open={false}>
           <Slider
             label="Kill distance"
             value={killDistance()}
@@ -240,16 +372,13 @@ export const App = () => {
           </div>
         </Section>
 
-        <Section title="Display">
+        <Section title="Display" open={false}>
+          <Toggle label="Auxin sources" {...overlayToggle("auxinSources")} />
+          <Toggle label="Vein nodes" {...overlayToggle("veinNodes")} />
           <Toggle
-            label="Auxin sources"
-            checked={overlays().auxinSources}
-            onChange={(auxinSources) => setOverlays({ ...overlays(), auxinSources })}
-          />
-          <Toggle
-            label="Vein nodes"
-            checked={overlays().veinNodes}
-            onChange={(veinNodes) => setOverlays({ ...overlays(), veinNodes })}
+            label="Zoom the background too"
+            checked={zoomBackdrop()}
+            onChange={setZoomBackdrop}
           />
           <Slider
             label="Vein width exponent"
@@ -286,26 +415,20 @@ export const App = () => {
             </button>
           </div>
         </Section>
-
-        <p class="status" aria-live="polite">
-          {snapshot() === undefined
-            ? "Starting…"
-            : `${statusLabels[snapshot()?.status ?? "growing"]} Step ${snapshot()?.stepCount ?? 0}, ${snapshot()?.xs.length ?? 0} vein nodes`}
-        </p>
       </aside>
-
-      <main class="stage">
-        <LeafCanvas
-          scene={{
-            blade: config()?.blade ?? { outer: [], holes: [], bounds: emptyBounds, area: 0 },
-            killDistance: config()?.killDistance ?? 0,
-            snapshot: snapshot(),
-          }}
-          settings={{ overlays: overlays(), veinWidthExponent: veinWidthExponent() }}
-        />
-      </main>
     </div>
   );
 };
 
 const emptyBounds = { minX: 0, minY: 0, maxX: 1, maxY: 1 };
+
+/** The style's theme, as CSS custom properties for the interface. */
+const themeVariables = ({ theme }: Style) => ({
+  "--accent": theme.accent,
+  "--on-accent": theme.onAccent,
+  "--card": theme.card,
+  "--card-edge": theme.cardEdge,
+  "--text": theme.text,
+  "--muted": theme.muted,
+  "--stage": theme.stage,
+});

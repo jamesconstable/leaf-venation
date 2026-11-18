@@ -42,3 +42,11 @@ describe("SnapshotAccumulator", () => {
     expect([...accumulator.add(progress(0, [9])).xs]).toEqual([9]);
   });
 });
+
+it("leaves snapshots already handed out intact after a reset", () => {
+  const accumulator = new SnapshotAccumulator();
+  const before = accumulator.add(progress(0, [1, 2, 3]));
+  accumulator.reset();
+  accumulator.add(progress(0, [7, 8, 9]));
+  expect([...before.xs]).toEqual([1, 2, 3]);
+});

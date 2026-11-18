@@ -66,6 +66,62 @@ Shared links must reproduce a leaf exactly. IEEE 754 requires `+ - * /` and `Mat
 
 A test fingerprints the complete output of two fixed simulations. It caught the deadlock fix above, which was correct and intended but changed results. That is exactly the signal for deciding whether shared links need a new model version.
 
+### Bokeh without WebGL
+
+The plan assumed animated bokeh would need WebGL shaders. Instead, each layer of out-of-focus foliage is painted at a tenth to a third of screen resolution, blurred in a few milliseconds at that size, and scaled up by the browser, which softens it further for free. Drifting the layers with CSS transforms lets the GPU compositor animate them at no cost to the main thread, so the simulation keeps the whole frame budget. A plain bilinear upscale alone left blocky artefacts; the small blur first is what makes it look like a lens.
+
+### `isPointInPath` ignores the canvas transform
+
+The stippled shading in the botanical ink style tested each candidate dot with `context.isPointInPath(blade, x, y)` and drew nothing at all. The path is interpreted through the context's current transform (scaled by the device pixel ratio on a high-density display), but the point is not: it's in raw canvas pixels. On a 2× display every test missed. Testing against our own polygon in the same coordinates fixed it, and is independent of the display.
+
+### Blurring a thin line dilutes it to nothing
+
+The soft shadows beside veins were first drawn as the blurred shadow of each vein's own shape, and were all but invisible: blurring spreads a line one or two pixels wide over many more, so its peak darkness collapses. The fix was to blur a shape several times wider than the vein, and to lay the shadow down twice. The same applies to any glow or halo built from a canvas shadow.
+
+### Two coordinate systems, one type
+
+The style swatches drew stray straight lines across their miniature leaves. They had been given the blade at leaf length 1, while vein positions are in simulation units, 200 times larger, so nearly every vein was drawn far off the swatch and the midvein appeared as a long line. Both values had the type `Region`. A _branded_ type for each coordinate system (normalised, simulation and screen) would have turned this into a compile error; a candidate for later.
+
+### Convincing foil is harder than it looks
+
+CSS foil for the options panel went through several versions: a diagonal gradient (read as just that), then narrow highlight bands with a crinkled grain (an earlier grain varied only in transparency over mid-grey, which a soft-light blend leaves unchanged), pinned to the window with `background-attachment: fixed` and shifted as the pointer moved, so every pill showed a different part of the same light. It was clever but didn't survive review: the range of brightness made text on the foil unreadable in places, the pieces still didn't look lit by one light, the light moved only sideways and froze when the pointer left the panel, and repainting fixed backgrounds lagged slightly. Flat colour replaced it for now.
+
+### Hold a drawing's tone steady as the leaf grows
+
+Stipple dots are placed on a lattice fixed to the final leaf, so they travel with the leaf as it grows instead of shimmering. But then a small leaf squeezes every dot into a fraction of the area, and looks far darker than the full-grown one (the whole final drawing, shrunk). Giving each candidate dot a random rank, and drawing only those ranked below the square of the blade's current scale, keeps the dots per pixel, and so the tone, constant: as the leaf grows, new dots appear between the old ones.
+
+### Shade derived from one chosen feature flickers as the choice changes
+
+The ink style first shaded the half of the blade beyond the midvein, choosing the midvein afresh each frame as the widest first-order vein. Near the tip, two growing veins took turns being widest, and the shading there flipped between light and dark. It also looked unnatural, like a yin-and-yang symbol. Folding the blade a little along every vein instead (each casting graded shade to one side, reaching further for wider veins), plus slopes of a gentle noise surface fixed to the leaf, gives richer relief with no single choice to flip.
+
+### Hash the pixels to prove a refactor changed nothing
+
+Pulling shared code out of the approved styles risked changing how they look, in ways too subtle to spot by eye. Hashing the canvas's pixels for a fixed random seed before and after each refactor (SHA-256 over `getImageData`) proved the output pixel-identical. It's a cheap stand-in for screenshot tests while those wait in the backlog.
+
+### Draw texture after shading to keep it visible in the shade
+
+The leaf's cell texture was laid down before the soft shadows beside the veins, which then hid it. Applied after the shadows with an `overlay` blend, the same texture modulates whatever is beneath it, so the cell walls carry on through the shaded bands.
+
+### Measure each lighting term before tuning any of them
+
+The ink style's tone is the sum of several terms: an overall gradient and the margin curving away, folds along the veins, each vein's relief, and the "curl" (slopes of a noise surface). A debug style showing each term in its own colour channel, all at one gain, revealed that the curl swamps the rest. It swings darkness by ±0.35 or more across the blade, against about ±0.06 for the folds and the gradient. At its scale the noise surface is a single broad tilt, so it alone makes the dark left half and bright right half, including the bright patch where fine veins fade. Folding along every vein had seemed to fix the yin-and-yang look, but the curl brought back a milder version of it.
+
+### Measure canvas work where it actually happens
+
+Timing ink's phases with `performance.now()` pointed at the wrong culprits at first. Canvas drawing is queued for the GPU, so a phase that only issues commands looks cheap and the cost turns up later, wherever something waits for the GPU: reading the tone map back with `getImageData` took 14 ms, almost all of it waiting for blurs queued just before. Painting at lower resolution barely changed it, while painting on a CPU-backed canvas (`willReadFrequently`) just moved the same cost into the blurs. The stipple loop's cost was building the path, not the per-dot maths: tens of thousands of `arc` calls took about 15 ms, so caching the noise per dot saved almost nothing until the dots were written straight into pixels. Frame intervals from `requestAnimationFrame` also mislead, since they snap to whole display frames (16.7, 33.3, 50 ms), and runs with different random seeds aren't comparable. Timing the style's whole draw call, with a fixed seed, gave trustworthy numbers.
+
+### Check that a cache actually hits
+
+Caching each stipple mark's curl seemed to save nothing, which wrongly suggested the curl wasn't costly. In fact the cache never hit: the vein stipple pass asked for it with a different random seed, evicting the blade's entry every frame. Fetching it only for the blade took ink from 38 ms to 29 ms a frame. Each blurred shadow fill also turned out to have a high fixed cost, regardless of the canvas's resolution, so painting folds with two wide offsets instead of four narrow ones saved more than halving their resolution had.
+
+### Zoom by magnifying the drawing, not by redrawing it bigger
+
+The first leaf zoom drew the leaf into a larger frame. Lines stayed sharp, but every mark sized in screen pixels (stipple dots, pen widths, cell textures) stayed the same size, so zooming in showed a denser, finer drawing rather than a closer look at the same one. It was also slow, since ink stippled the whole enlarged leaf, offscreen parts included. Magnifying through the canvas's transform instead enlarges everything together and keeps vector marks sharp. The remaining work was in the bitmaps styles paint offscreen (tone maps, the summer lighting, the living cells): these now cover only the visible area and follow the magnification, up to a limit for the costliest.
+
+### Cells shaped by veins: remove the sites, and wall off the veins
+
+To make mesophyll cells end at veins rather than lie across them, three fixes fell short in turn. Shrinking cell sites near a vein let cells from the far side spill across. Pushing sites off veins piled them up between closely spaced fine veins, leaving gaps the veins filled. Walling each cell off from its nearest vein still let veins slice through cells, because each wall was a single 3-pixel piece of vein and cells simply reached around its ends. The user's suggestion from Worley noise, removing (here, fading out) the sites nearest a vein so their neighbours' walls meet along it, combined with walls that follow the vein for a cell's whole reach, fixed the cells themselves, but veins still appeared to run through cell centres. Colouring each cell's pixels by owner finally showed why: each vein claimed a band of pixels about a cell wide on either side, left to it once the nearby sites faded, and shaded like a cell that band read as a long cell with the vein down its middle. Limiting a vein's territory to its own width fixed it. The lesson is to look at what the algorithm assigns, not at the shaded result. An interactive walkthrough of each attempt, at three times the scale, made the approach explainable where prose had failed.
+
 ### A reactive framework can reset an input before you read it
 
 Our slider kept a "draft" value while dragging. On release, the handler cleared the draft and then read the input's value. But clearing the draft made SolidJS synchronously re-render the input with the old value, so every slider silently ignored the user. The unit tests didn't cover the UI; a browser check found it within minutes.

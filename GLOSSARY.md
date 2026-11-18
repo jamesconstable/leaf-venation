@@ -154,6 +154,14 @@ _Avoid_: Modified, user-defined
 An optional visualisation of the algorithm's internals drawn over the leaf, e.g. auxin sources or influence lines.
 _Avoid_: Debug view, algorithmic details
 
+**Style option**:
+A setting a particular style offers for its own look, e.g. botanical ink's stipple density. Shown only in development for now.
+_Avoid_: Style setting, style parameter
+
+**Leaf zoom**:
+Magnifying the leaf on screen without changing the simulation; the backdrop stays still unless asked otherwise.
+_Avoid_: Scale (which belongs to growth)
+
 ## Settings
 
 **Simulation parameter**:

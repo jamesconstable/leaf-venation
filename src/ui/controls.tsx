@@ -1,13 +1,14 @@
-import { createSignal, For, type JSX } from "solid-js";
+import { createSignal, For, Show, type JSX } from "solid-js";
 
 let nextId = 0;
 const uniqueId = (prefix: string) => `${prefix}-${nextId++}`;
 
-export const Section = (props: { title: string; children: JSX.Element }) => (
-  <section class="section">
-    <h2>{props.title}</h2>
-    {props.children}
-  </section>
+/** A collapsible group of controls. */
+export const Section = (props: { title: string; open?: boolean; children: JSX.Element }) => (
+  <details class="section" open={props.open ?? true}>
+    <summary>{props.title}</summary>
+    <div class="section-body">{props.children}</div>
+  </details>
 );
 
 /**
@@ -84,19 +85,30 @@ export const Choice = <T extends string>(props: {
   );
 };
 
+/** A checkbox, with an optional note beside its label (also read out as its description). */
 export const Toggle = (props: {
   label: string;
   checked: boolean;
+  note?: string | undefined;
   onChange: (checked: boolean) => void;
-}) => (
-  <label class="toggle">
-    <input
-      type="checkbox"
-      checked={props.checked}
-      onChange={(event) => {
-        props.onChange(event.currentTarget.checked);
-      }}
-    />
-    <span>{props.label}</span>
-  </label>
-);
+}) => {
+  const noteId = uniqueId("note");
+  return (
+    <label class="toggle">
+      <input
+        type="checkbox"
+        checked={props.checked}
+        aria-describedby={props.note === undefined ? undefined : noteId}
+        onChange={(event) => {
+          props.onChange(event.currentTarget.checked);
+        }}
+      />
+      <span>{props.label}</span>
+      <Show when={props.note}>
+        <span class="toggle-note" id={noteId}>
+          {props.note}
+        </span>
+      </Show>
+    </label>
+  );
+};
